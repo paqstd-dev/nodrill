@@ -9,13 +9,14 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from contextvars import ContextVar, Token
+from contextvars import ContextVar, Token, copy_context
 from types import MappingProxyType, TracebackType
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, overload
 
 from ._ambient import _ambient
-from ._errors import NoProviderError
+from ._errors import NoProviderError, _describe_key
 from ._frozen import _FrozenProxy
+from ._lazy import _is_lazy, _Lazy, _LazyCell, _Resolution
 
 T = TypeVar("T")
 D = TypeVar("D")
@@ -126,6 +127,45 @@ class _Provider(Generic[T]):
         self.__exit__(exc_type, exc, tb)
 
 
+class _LazyProvider(_Provider[Any]):
+    """Context manager returned by provider() for a lazy() target.
+
+    Mints a fresh build per entry, so a reused provider resolves again, and
+    with frozen=True two views of it.
+    """
+
+    __slots__ = ("_carrier", "_frozen")
+
+    def __init__(self, carrier: _Lazy, *, frozen: bool) -> None:
+        super().__init__(carrier.key, None, None)
+        self._carrier = carrier
+        self._frozen = frozen
+
+    def __enter__(self) -> Any:
+        if self._token is not None:
+            # Delegated, so an already-active provider has one error and one wording.
+            return super().__enter__()
+        # Two views only when frozen, so the block keeps writing while callees read only.
+        state = _Resolution(self._carrier.key, self._carrier.factory)
+        self._value = _LazyCell(state, frozen=False)
+        self._public = _LazyCell(state, frozen=True) if self._frozen else self._value
+        yielded = super().__enter__()
+        # After publishing, so a factory reading its own key meets the guard and not
+        # whatever the enclosing scope had under that key.
+        state.context = copy_context()
+        return yielded
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        super().__exit__(exc_type, exc, tb)
+        # The cell belongs to the scope, so holding it here would pin the built value.
+        self._value = self._public = None
+
+
 @overload
 def provider(name: str, /, *, frozen: bool = ..., **values: Any) -> _Provider[Namespace]: ...
 @overload
@@ -140,8 +180,10 @@ def provider(
     provider("app") yields a fresh Namespace registered under the name,
     prefilled from keyword arguments.  provider(instance) registers the
     instance under its class for a typed use(type(instance)) lookup, or under
-    key= if one is given.  Same-key providers shadow outer ones, and the
-    outer value is restored on exit even if the block raises.  With frozen=True,
+    key= if one is given.  provider(lazy(Cls, factory)) registers a value
+    that is built on the first read inside the scope, and not at all if
+    nothing reads it.  Same-key providers shadow outer ones, and the outer
+    value is restored on exit even if the block raises.  With frozen=True,
     consumers get a read-only view while the yielded object stays writable.
     """
     if len(args) > 1:
@@ -176,14 +218,25 @@ def provider(
                 "keyword values are only supported for string-named providers: "
                 "provider('app', db=...)"
             )
+        if _is_lazy(target):
+            if key is not None:
+                raise TypeError(
+                    "provider(key=...) does not apply to a lazy target: lazy() already "
+                    "names the key it registers under"
+                )
+            return _LazyProvider(target, frozen=frozen)
         registered = _instance_key(target, key)
         value = target
     public = _FrozenProxy(value) if frozen else value
     return _Provider(registered, value, public)
 
 
-def _instance_key(target: Any, key: str | type[Any] | None) -> str | type[Any]:
-    """Return the registry key for an instance provider."""
+def _instance_key(target: Any, key: Any) -> str | type[Any]:
+    """Return the registry key for an instance provider.
+
+    Typed loosely on purpose: this is where a key of the wrong kind is
+    caught, so the annotation cannot rule one out first.
+    """
     if isinstance(target, type):
         raise TypeError(
             f"provider() takes an instance, not a class. "
@@ -193,6 +246,11 @@ def _instance_key(target: Any, key: str | type[Any] | None) -> str | type[Any]:
         return type(target)
     if isinstance(key, _KEY_TYPES):
         return key
+    if _is_lazy(key):
+        raise TypeError(
+            "provider(key=...) expects a string name or a class. A lazy() target goes in "
+            "the positional slot, as provider(lazy(Cls, factory))"
+        )
     raise TypeError(f"provider(key=...) expects a string name or a class, got {type(key).__name__}")
 
 
@@ -230,6 +288,12 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
     wrappers can take the miss path without re-reading the registry.
     """
     if not isinstance(key, _KEY_TYPES):
+        if _is_lazy(key):
+            name = _describe_key(key.key)
+            raise TypeError(
+                f"use() received what lazy() returned, which is a target rather than a key. "
+                f"Open it with provider(lazy({name}, factory)) and read it with use({name})"
+            )
         raise TypeError(
             f"use() expects a string name or a class, got {type(key).__name__}: {key!r}"
         )
@@ -259,6 +323,14 @@ def set_default(cls: type[T], factory: Callable[[], T] | None) -> type[T]:
     """
     if not isinstance(cls, type):
         raise TypeError(f"set_default() registers classes, got {type(cls).__name__}: {cls!r}")
+    # Ahead of the chain below, which a narrowing type checker calls dead code once
+    # callable() has run.
+    if _is_lazy(factory):
+        raise TypeError(
+            "set_default() takes a plain factory, not what lazy() returns. A registered "
+            "factory runs on every miss, while a lazy value is built once per scope: "
+            "pass it to provider() instead"
+        )
     if factory is None:
         _defaults.pop(cls, None)
     elif callable(factory):

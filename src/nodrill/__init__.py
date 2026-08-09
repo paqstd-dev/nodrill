@@ -10,6 +10,7 @@ from ._concurrency import Executor, wrap
 from ._core import Namespace, active, isolate, provider, set_default, use
 from ._errors import FrozenContextError, NoProviderError
 from ._inject import FromCtx, from_ctx, inject, injected
+from ._lazy import lazy
 
 __version__ = "0.1.0"
 
@@ -26,6 +27,7 @@ __all__ = [
     "inject",
     "injected",
     "isolate",
+    "lazy",
     "provider",
     "set_default",
     "use",
