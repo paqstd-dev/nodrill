@@ -10,9 +10,9 @@ The core of the library: open a scope, defer what it costs to fill, read from it
 provider
 --------
 
-.. function:: provider(name, /, *, frozen=False, **values)
+.. function:: provider(name, /, *, frozen=False, extend=False, **values)
                provider(instance, /, *, key=None, frozen=False)
-               provider(*, name, frozen=False, **values)
+               provider(*, name, frozen=False, extend=False, **values)
 
    Make a value available to the whole call subtree through :func:`use`.
    Returns a context manager; the value is registered on entry and removed on exit, whether the block completes or raises.
@@ -27,7 +27,10 @@ provider
       Rejected for string-named providers, which already have a key.
    :param frozen: When true, code reading through :func:`use` gets a read-only view while the handle the block yields stays writable.
       See :ref:`frozen-views` below.
-   :raises TypeError: More than one positional argument, no target at all, a class rather than an instance, keyword values with an instance target, a non-string ``name=``, a ``key=`` that is neither a string nor a class, or a ``key=`` beside a :func:`lazy` target, which already names its own key.
+   :param extend: When true, the block lays ``**values`` over a copy of the namespace the same name already holds, instead of shadowing it.
+      String-named providers only; see :ref:`extending-providers` below.
+   :raises TypeError: More than one positional argument, no target at all, a class rather than an instance, keyword values with an instance target, a non-string ``name=``, a ``key=`` that is neither a string nor a class, a ``key=`` beside a :func:`lazy` target, which already names its own key, or ``extend=True`` on anything but a string name.
+      On entry, ``extend=True`` over a name that holds something other than a :class:`Namespace`.
    :raises RuntimeError: On entering a provider object that is already active.
       Create a separate provider for a nested or concurrent block.
 
@@ -41,7 +44,7 @@ provider
 
    The ``name=`` keyword is the key only when no positional target is given.
    With a positional target it is ordinary data, so ``provider("doc", name="report.pdf")`` sets an attribute called ``name``.
-   ``frozen`` and ``key`` are the two names that cannot be prefilled this way, since they are the function's own parameters.
+   ``frozen``, ``key`` and ``extend`` are the three names that cannot be prefilled this way, since they are the function's own parameters.
 
    The returned object may be entered again after it exits, but not while it is active.
 
@@ -94,6 +97,35 @@ A mutable object reached *through* the target is still mutable::
 
 ``type(proxy)`` still reports the proxy class.
 This is a guard rail against accidental writes, not a security boundary.
+
+.. _extending-providers:
+
+Extending providers
+~~~~~~~~~~~~~~~~~~~
+
+With ``extend=True`` the block copies the namespace the same name currently holds and lays its own values over the copy.
+
+.. code-block:: python
+
+   with provider("audit", request_id="r-1"):
+       with provider("audit", extend=True, actor_id=7):
+           use("audit").request_id          # "r-1"
+           use("audit").actor_id            # 7
+
+       use("audit").actor_id                # AttributeError
+
+Attributes shadow one at a time, so a name set by both layers takes the inner value, and the merge is one level deep: a value that is itself a mapping is replaced, not merged.
+With no enclosing provider under that name it is an ordinary provider, so a layer needs no branch for being the first one.
+
+The copy is taken when the block is entered, not when ``provider()`` is called, which is observable for a provider object entered twice around different enclosing layers.
+It is a snapshot in both directions: a later write to the outer namespace is invisible inside the block, and a write inside the block is invisible outside it.
+Nothing is copied within a layer, so a callee still mutates the namespace the block yielded.
+
+The layer inherits the name, so an :exc:`AttributeError` still reports which provider the namespace came from, and it does not inherit ``frozen``.
+An outer layer provided with ``frozen=True`` is read through its view and produces a writable layer, unless the inner one asks for ``frozen=True`` in its own right.
+
+``extend=True`` is refused for instance and :func:`lazy` targets, where providing a new value, built with :func:`dataclasses.replace` or otherwise, is the equivalent.
+Extending a name that holds something other than a :class:`Namespace` raises :exc:`TypeError` on entry, naming the type found, rather than shadowing it silently.
 
 .. _lazy-values:
 

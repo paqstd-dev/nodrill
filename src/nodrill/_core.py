@@ -166,14 +166,76 @@ class _LazyProvider(_Provider[Any]):
         self._value = self._public = None
 
 
+class _ExtendingProvider(_Provider[Any]):
+    """Context manager returned by provider() for extend=True.
+
+    Mints the merged namespace per entry, so a reused provider object layers
+    over whatever encloses it at that moment rather than over what enclosed
+    it when provider() was called.
+    """
+
+    __slots__ = ("_frozen", "_name", "_values")
+
+    def __init__(self, name: str, values: dict[str, Any], *, frozen: bool) -> None:
+        super().__init__(name, None, None)
+        # The same string as _key, kept narrowed, since only a name can be extended.
+        self._name = name
+        self._values = values
+        self._frozen = frozen
+
+    def __enter__(self) -> Namespace:
+        if self._token is None:
+            merged = self._extended(_registry.get())
+            self._value = merged
+            self._public = _FrozenProxy(merged) if self._frozen else merged
+        # Delegated, so an already-active provider has one error and one wording.
+        namespace: Namespace = super().__enter__()
+        return namespace
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        super().__exit__(exc_type, exc, tb)
+        # The namespace belongs to the scope, so holding it here would pin a request's data.
+        self._value = self._public = None
+
+    def _extended(self, registry: dict[str | type[Any], Any]) -> Namespace:
+        """Return a fresh namespace with this layer's values over the enclosing ones."""
+        outer = registry.get(self._name, _MISSING)
+        if outer is _MISSING:
+            return Namespace._named(self._name, self._values)  # noqa: SLF001
+        if not isinstance(outer, Namespace):
+            # Named through __class__, so a frozen outer value reports its own type.
+            raise TypeError(
+                f"provider({self._name!r}, extend=True) can only extend a Namespace, and "
+                f"{self._name!r} currently provides a {outer.__class__.__name__}. Drop "
+                f"extend=True to shadow it, as a plain provider does"
+            )
+        # A copy, since sibling tasks hold a reference to the outer dict itself.
+        values = dict(vars(outer))
+        values.update(self._values)
+        return Namespace._named(self._name, values)  # noqa: SLF001
+
+
 @overload
-def provider(name: str, /, *, frozen: bool = ..., **values: Any) -> _Provider[Namespace]: ...
+def provider(
+    name: str, /, *, frozen: bool = ..., extend: bool = ..., **values: Any
+) -> _Provider[Namespace]: ...
 @overload
 def provider(instance: T, /, *, key: str | type[Any] = ..., frozen: bool = ...) -> _Provider[T]: ...
 @overload
-def provider(*, name: str, frozen: bool = ..., **values: Any) -> _Provider[Namespace]: ...
 def provider(
-    *args: Any, key: str | type[Any] | None = None, frozen: bool = False, **values: Any
+    *, name: str, frozen: bool = ..., extend: bool = ..., **values: Any
+) -> _Provider[Namespace]: ...
+def provider(
+    *args: Any,
+    key: str | type[Any] | None = None,
+    frozen: bool = False,
+    extend: bool = False,
+    **values: Any,
 ) -> _Provider[Any]:
     """Make a value available to the whole call subtree through use().
 
@@ -183,36 +245,29 @@ def provider(
     key= if one is given.  provider(lazy(Cls, factory)) registers a value
     that is built on the first read inside the scope, and not at all if
     nothing reads it.  Same-key providers shadow outer ones, and the outer
-    value is restored on exit even if the block raises.  With frozen=True,
+    value is restored on exit even if the block raises.  With extend=True, a
+    string-named provider lays its values over a copy of the namespace the
+    same name already holds instead of shadowing it.  With frozen=True,
     consumers get a read-only view while the yielded object stays writable.
     """
-    if len(args) > 1:
-        raise TypeError(f"provider() takes a single target, got {len(args)} positional arguments")
-    if args:
-        target: Any = args[0]
-    else:
-        # With a positional target, a name= keyword is prefill data rather than the key.
-        try:
-            target = values.pop("name")
-        except KeyError:
-            raise TypeError(
-                "provider() needs a target: provider('name'), provider(name='name'), "
-                "or provider(instance)"
-            ) from None
-        if not isinstance(target, str):
-            raise TypeError(
-                "provider(name=...) expects a string name. Pass instances positionally, as "
-                "provider(instance)"
-            )
+    target = _target_of(args, values)
     if isinstance(target, str):
         if key is not None:
             raise TypeError(
                 "provider(key=...) applies to instance providers. A string-named "
                 "provider is already registered under its name"
             )
+        if extend:
+            return _ExtendingProvider(target, values, frozen=frozen)
         registered: str | type[Any] = target
         value: Any = Namespace._named(target, values)  # noqa: SLF001
     else:
+        if extend:
+            raise TypeError(
+                "provider(extend=True) applies to string-named providers, as "
+                "provider('audit', extend=True, actor_id=7). A value provider layers by "
+                "providing a new value, which for a dataclass is dataclasses.replace(instance, ...)"
+            )
         if values:
             raise TypeError(
                 "keyword values are only supported for string-named providers: "
@@ -229,6 +284,32 @@ def provider(
         value = target
     public = _FrozenProxy(value) if frozen else value
     return _Provider(registered, value, public)
+
+
+def _target_of(args: tuple[Any, ...], values: dict[str, Any]) -> Any:
+    """Return what provider() was pointed at, positionally or by name=.
+
+    Pops the name= keyword when that is what names the provider, leaving
+    values holding prefill data and nothing else.
+    """
+    if len(args) > 1:
+        raise TypeError(f"provider() takes a single target, got {len(args)} positional arguments")
+    if args:
+        return args[0]
+    # With a positional target, a name= keyword is prefill data rather than the key.
+    try:
+        target = values.pop("name")
+    except KeyError:
+        raise TypeError(
+            "provider() needs a target: provider('name'), provider(name='name'), "
+            "or provider(instance)"
+        ) from None
+    if not isinstance(target, str):
+        raise TypeError(
+            "provider(name=...) expects a string name. Pass instances positionally, as "
+            "provider(instance)"
+        )
+    return target
 
 
 def _instance_key(target: Any, key: Any) -> str | type[Any]:

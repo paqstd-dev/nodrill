@@ -10,6 +10,7 @@ Each one is a complete program you can paste into a file and run, with the reaso
    :maxdepth: 1
 
    scope-a-web-request
+   accumulate-an-audit-trail
    fan-out-with-asyncio
    run-work-in-threads
    test-injected-code

@@ -196,6 +196,33 @@ provider() signature
 The implementation takes ``*args``; a positional target wins and a ``name=`` keyword becomes a prefill value, and with no positional the ``name=`` keyword is the key, strings only.
 ``Namespace.__init__(self, /, **values)`` is positional-only for the same reason, so ``Namespace(self=1)`` is legal data.
 
+``frozen``, ``key`` and ``extend`` are the three names that cannot be prefill data, being the function's own parameters.
+That list is the running cost of the design and the reason a fourth one has to argue for itself.
+
+extend=True merges by copying
+-----------------------------
+
+A scope that accumulates as the call descends had three bad answers before: one provider per layer under different keys, which makes the consumer depend on how many layers happened to run; the ambient ``context``, which nothing unwinds; or mutating the enclosing ``Namespace`` in place, which writes into an object sibling tasks are holding.
+The third one is the copy-on-write invariant, broken quietly, and it is the reason this is a feature rather than a recipe.
+
+So the extending layer copies the enclosing namespace on entry and lays its values over the copy.
+Sibling isolation then costs nothing extra: it is the same argument as for the registry dict, one level down.
+Exit is the ordinary token reset, so each block restores exactly one layer, and the accumulated scope is still one key, one registry entry and one O(1) lookup.
+
+The copy is taken at enter rather than at ``provider()``, which a provider object entered twice around different enclosing layers can tell apart, and enter is the answer because such an object is documented as reusable.
+It is therefore a snapshot in both directions, which is the one surprising rule the feature has: within a layer nothing is copied and mutation is shared, but across the boundary the two layers are two objects.
+The alternative, a :class:`~collections.ChainMap`-style view over the layers, would keep writes flowing both ways at the price of making every attribute read O(depth) on the path this project has optimised hardest.
+
+It is a parameter and not an ``extend()`` function of its own.
+A second entry point reads well in isolation and splits the mental model in two, so a reader has to know both spellings before they can say what a scope contains; ``provider`` stays the one way in.
+
+Shadowing stays the default, because it is what makes a test override work: a suite that opens ``provider("app", db=fake)`` inside a request scope wants the fake and not a merge, and changing that default would break every existing override in a way that fails silently.
+Merging is also one level deep on purpose, since a rule that merges nested mappings is a rule about types rather than about scopes.
+
+The layer is refused rather than improvised where it has no meaning.
+On an instance target ``extend=True`` would be :func:`dataclasses.replace` with extra steps, and over a name holding a non-``Namespace`` value it would have to fall back to shadowing, which is precisely the bug the feature exists to prevent, so both raise and say what to write instead.
+Freezing is not inherited, since ``frozen=True`` describes what a provider hands to its consumers rather than a property the value carries; extending a frozen layer reads the outer attributes through the proxy, which forwards ``__dict__`` like any other read.
+
 Errors
 ------
 
