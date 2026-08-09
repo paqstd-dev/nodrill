@@ -4,7 +4,7 @@ Providers and scopes
 ====================
 
 A provider makes one value visible to everything that runs inside a ``with`` block, however deep.
-This page covers the shapes ``provider`` accepts, what a scope does on entry and exit, how mutation flows, and what ``frozen=True`` changes.
+This page covers the shapes ``provider`` accepts, what a scope does on entry and exit, how mutation flows, and what ``lazy`` and ``frozen=True`` change.
 
 .. contents::
    :local:
@@ -132,6 +132,83 @@ A callee that mutates it mutates the caller's object, which is exactly what you 
 
 Rebinding the name inside a callee does nothing, as with any Python object: ``use(Config)`` returns the object, and assigning to that local only changes the local.
 To publish a different value, open another provider.
+
+Lazy providers
+--------------
+
+A boundary that opens a provider has to build the value first, and it does not know whether anything below will read it.
+A middleware that wants request context available for auditing pays for ``request.user`` on every request, while the audit path runs on a few percent of them.
+
+``lazy`` moves the construction to the first read:
+
+.. code-block:: python
+
+   from nodrill import lazy, provider, use
+
+   with provider(lazy(Origin, lambda: Origin(actor_id=request.user.pk))):
+       response = get_response(request)     # nothing built yet
+
+   # deep inside, on the few requests that care
+   use(Origin).actor_id                     # the factory runs here, once
+
+The key is given explicitly, because there is no value yet to derive it from.
+
+What the scope holds is a cell that resolves on the first operation needing the value and then delegates to it.
+Reads, writes, comparisons and the operators behave as the value does, and ``isinstance`` holds before and after resolution, so ordinary code cannot tell the difference:
+
+.. code-block:: python
+
+   with provider(lazy(Config, load)):
+       cfg = use(Config)
+       isinstance(cfg, Config)              # True, and load has still not run
+       cfg.dsn                              # now it runs
+
+What can tell is ``type()``, which reports the cell, exactly as it does for a frozen view.
+So does ``repr``, and that one is deliberate: it reports the cell's state instead of resolving.
+Inspecting an unresolved value is a debugging act, and a debugging act that opens a database connection is a bad one, which is what keeps :func:`~nodrill.active` safe to print:
+
+.. code-block:: python
+
+   with provider(lazy(Config, load)):
+       print(active())                      # {<class 'Config'>: <lazy Config, unresolved>}
+
+``str`` is not treated that way, because ``str(x)`` asks the value for its own text, so ``print(use(Config))`` does resolve.
+
+Once per scope
+~~~~~~~~~~~~~~
+
+The result is cached until the scope exits, and a second scope starts unresolved again, including a second entry of the same provider object.
+The cache belongs to the scope rather than to the object, which is what keeps a value out of the next request.
+
+The factory runs under the context the scope was entered with, so ``use()`` inside it reads the scope that declared the value:
+
+.. code-block:: python
+
+   with provider(Tenant("acme")):
+       with provider(lazy(Report, lambda: Report(owner=use(Tenant).name))):
+           with provider(Tenant("other")):
+               use(Report).owner            # "acme", not "other"
+
+Two threads inside one scope resolve once: the second waits for the first and reads what it built.
+That wait is a plain lock, so keep a slow factory off an event loop, as you would any blocking call.
+A factory that raises has its exception cached and re-raised on every later touch, so the failure does not depend on which frame happened to read first.
+A factory that reads or returns the key it is building raises :exc:`RuntimeError` instead of recursing.
+
+What it costs
+~~~~~~~~~~~~~
+
+Every read goes through the cell, which is the same proxy hop ``frozen=True`` charges, and opening the scope builds the cell and snapshots the context.
+That is the right trade for a value that costs a round trip to build and is read on a minority of requests, and the wrong one for a value that is cheap to build and read in a loop.
+The README table prices both ends.
+
+``lazy`` composes with ``frozen=True``: the block and the registry get two cells over one build rather than a proxy stacked on a proxy, so a frozen lazy read still costs one hop and the block keeps writing:
+
+.. code-block:: python
+
+   with provider(lazy(Config, load), frozen=True) as cfg:
+       cfg.dsn = "the owner can still write"
+
+       use(Config).dsn = "..."              # FrozenContextError
 
 Frozen providers
 ----------------

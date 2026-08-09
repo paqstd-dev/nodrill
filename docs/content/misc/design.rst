@@ -117,6 +117,41 @@ Freezing is shallow, and stays that way: a deep freeze means proxying every valu
 
 Patching ``__setattr__`` on the instance was rejected, since it mutates user objects, breaks on ``__slots__`` and frozen dataclasses, and is unsafe under concurrency.
 
+lazy is a cell, not a branch in use()
+-------------------------------------
+
+``provider(lazy(Cls, factory))`` stores a second registry-side proxy, generated from the same tables as the frozen one.
+
+The alternative was one line in ``use()``::
+
+   if type(value) is _LazyCell:
+       value = value.get()
+
+It reads better and costs every lookup in every program that never uses the feature, on the one path this project has optimised hardest.
+It also cannot write the resolved value back without mutating a registry dict that sibling contexts hold, which is the copy-on-write invariant.
+Resolving at ``provider()`` enter behind a flag is eager construction with extra words, and caching in ``set_default`` was already rejected for being a global mutable singleton, where a cell caches per scope.
+
+The build belongs to the scope, minted on entry and dropped on exit, so re-entering one provider object resolves again.
+A cell handed to a callee can still outlive the block, and resolving it late is well defined rather than forbidden: the factory runs under a snapshot of the scope the provider was entered with, taken once the key itself is published.
+Without that snapshot, deferring construction would also move it from the definition site to whichever scope read first, so an inner provider for the same key could decide what an outer lazy value is built from, and the wrong answer would be cached.
+It costs one ``copy_context()`` per entry, and unlike ``wrap()`` the snapshot needs no per-call replay, since a factory runs at most once and so enters that ``Context`` at most once.
+
+Once-only is a reentrant lock's job.
+The owner check beside it covers what that lock lets through, a factory reading the key it is building, which comes back on its own thread and raises rather than recursing.
+A failing factory has its exception cached, because a failure that depends on which frame touched the value first is not debuggable, while a ``BaseException`` is not, since a cancelled task says nothing about the factory.
+
+``repr`` is the one operation that does not resolve, because ``active()`` is printed exactly when something has already gone wrong.
+
+Unlike the frozen proxy, the cell forwards writes, item assignment and the in-place operators: a lazy value that is not also frozen has to behave as the value would, and an absent ``__iadd__`` would silently rebind the caller's name instead of extending the provided list.
+
+``frozen=True`` composes by splitting the views rather than by stacking a second proxy, so the block holds a plain cell and the registry a freezing one over the same build.
+Wrapping inside the build would have handed the block a read-only handle, which is the half of the frozen contract that exists so the owner keeps writing.
+
+``lazy(Cls, factory)`` is annotated as returning ``Cls`` while it really returns an inert carrier, the one place here where the annotation is not the runtime type.
+It describes what the caller ends up holding, since ``provider()`` turns the carrier into a cell answering ``isinstance`` and every read as a ``Cls``; typing it as the carrier would type every ``use(Cls)`` downstream as something no caller ever sees.
+
+The name takes the key first, since ``lazy(factory, key=Origin)`` puts the interesting word last, and string keys are refused because a string-named provider has nothing to defer.
+
 @inject mechanics
 -----------------
 

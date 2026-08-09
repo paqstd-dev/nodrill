@@ -6,7 +6,7 @@ API reference
 .. module:: nodrill
 
 Everything nodrill exports, described exactly.
-The whole public surface is fifteen names, all importable from the top-level package:
+The whole public surface is sixteen names, all importable from the top-level package:
 
 .. code-block:: python
 
@@ -22,6 +22,7 @@ The whole public surface is fifteen names, all importable from the top-level pac
        inject,
        injected,
        isolate,
+       lazy,
        provider,
        set_default,
        use,

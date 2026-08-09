@@ -5,7 +5,7 @@ Providers and lookups
 
 .. currentmodule:: nodrill
 
-The core four: open a scope, read from it, register a fallback, and the namespace object string-named providers hand back.
+The core of the library: open a scope, defer what it costs to fill, read from it, register a fallback, and the namespace object string-named providers hand back.
 
 provider
 --------
@@ -25,9 +25,9 @@ provider
    :param key: The key to register an instance under, instead of its own class.
       A string name or a class; see :ref:`explicit-keys` below.
       Rejected for string-named providers, which already have a key.
-   :param frozen: When true, code reading through :func:`use` gets a read-only view while the object the block yields stays writable.
+   :param frozen: When true, code reading through :func:`use` gets a read-only view while the handle the block yields stays writable.
       See :ref:`frozen-views` below.
-   :raises TypeError: More than one positional argument, no target at all, a class rather than an instance, keyword values with an instance target, a non-string ``name=``, or a ``key=`` that is neither a string nor a class.
+   :raises TypeError: More than one positional argument, no target at all, a class rather than an instance, keyword values with an instance target, a non-string ``name=``, a ``key=`` that is neither a string nor a class, or a ``key=`` beside a :func:`lazy` target, which already names its own key.
    :raises RuntimeError: On entering a provider object that is already active.
       Create a separate provider for a nested or concurrent block.
 
@@ -94,6 +94,61 @@ A mutable object reached *through* the target is still mutable::
 
 ``type(proxy)`` still reports the proxy class.
 This is a guard rail against accidental writes, not a security boundary.
+
+.. _lazy-values:
+
+lazy
+----
+
+.. function:: lazy(key, factory, /)
+
+   Build a provided value on the first read inside the scope, and not at all without one.
+   Pass the result to :func:`provider`; nothing else accepts it.
+
+   :param key: The class the value is registered under.
+      Given explicitly, since there is no value yet to derive it from, and not checked against what the factory returns.
+      A :class:`~typing.Protocol` or an abstract base class works, as it does for ``provider(instance, key=...)``.
+   :param factory: A zero-argument callable returning the value.
+   :raises TypeError: ``key`` is not a class, or ``factory`` is not callable.
+
+   .. code-block:: python
+
+      with provider(lazy(Origin, lambda: Origin(actor_id=request.user.pk))):
+          response = get_response(request)      # the factory has not run
+
+      use(Origin).actor_id                      # it runs here, once
+
+   The factory runs on the first operation that needs the value, and its result is cached until the scope exits.
+   A second scope, including a second entry of the same provider object, starts unresolved again.
+   It runs under the context the scope was entered with, so a factory calling :func:`use` reads the scope that declared the value and not whichever one happened to touch it first.
+   Writes to a :class:`~contextvars.ContextVar` inside the factory therefore stay in that snapshot, as they do inside :func:`wrap`.
+
+   Two threads inside one scope run the factory once; the second waits for the first.
+   That wait is an ordinary lock acquisition, so a coroutine reading a key another thread is still building blocks its whole event loop.
+   A factory that hands that read to another thread and waits for it deadlocks, as any once-only initialisation does.
+
+   An :exc:`Exception` is cached and re-raised on every later touch, so a failure does not depend on which frame happened to read first.
+   It is the same object each time, so its traceback grows and its ``__context__`` follows the last reader.
+   A :exc:`BaseException` is not cached, since a cancelled task says nothing about the factory.
+   A factory that reads or returns the key it is building raises :exc:`RuntimeError` rather than recursing, provided it does so on its own thread.
+
+   The registry stores a cell that resolves and delegates, so ``isinstance`` holds before and after resolution and reads, writes and the operators behave as the value does.
+   Its gaps are the ones :ref:`frozen-views` has, and for the same reason.
+   ``repr`` is deliberately different: it reports the cell's state rather than resolving, which is what keeps :func:`active` free of side effects.
+   ``str`` is not, so ``print(use(Cls))`` does run the factory.
+
+   .. code-block:: python
+
+      with provider(lazy(Config, load)):
+          repr(use(Config))                     # '<lazy Config, unresolved>'
+          use(Config).dsn                       # resolves
+          repr(use(Config))                     # "<lazy Config, Config(dsn='...')>"
+
+   With ``frozen=True`` the block and the registry get two views of one build: the block's handle stays writable and consumers get the read-only view described in :ref:`frozen-views`.
+   The factory still runs once, on whichever view is touched first, and either costs one proxy hop per read.
+   The block yields a cell rather than the object, since with nothing built yet there is no object to hand over.
+
+   String keys are not accepted, since a string-named provider fills its :class:`Namespace` at the call and has nothing left to defer.
 
 use
 ---
