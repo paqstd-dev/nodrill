@@ -37,7 +37,7 @@ class TestAsyncInjection:
         with provider(Config(tag="outer")):
             coro_born_outer = fetch()
             with provider(Config(tag="inner")):
-                # bind_partial + use() run when the coroutine is awaited.
+                # The wrapper body, use() included, runs when the coroutine is awaited.
                 assert await coro_born_outer == "inner:0"
 
     async def test_async_method(self) -> None:

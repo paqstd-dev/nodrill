@@ -1,5 +1,7 @@
+import linecache
 from collections.abc import Callable
 from dataclasses import dataclass
+from types import FunctionType
 from typing import Annotated, Any
 
 import pytest
@@ -335,6 +337,27 @@ class TestDecorationGuards:
 
     def test_injected_repr(self) -> None:
         assert repr(injected) == "<nodrill.injected>"
+
+    def test_generated_source_is_registered_for_tracebacks(self) -> None:
+        @inject
+        def handler(cfg: FromCtx[AppCtx] = injected) -> str:
+            return cfg.db
+
+        assert isinstance(handler, FunctionType)
+        assert linecache.getline(handler.__code__.co_filename, 1).startswith("def handler(")
+
+    def test_same_label_wrappers_keep_distinct_sources(self) -> None:
+        def make() -> FunctionType:
+            @inject
+            def handler(cfg: FromCtx[AppCtx] = injected) -> str:
+                return cfg.db
+
+            assert isinstance(handler, FunctionType)
+            return handler
+
+        first, second = make(), make()
+        assert first.__code__.co_filename != second.__code__.co_filename
+        assert linecache.getline(second.__code__.co_filename, 1).startswith("def handler(")
 
 
 class TestSentinelLeak:

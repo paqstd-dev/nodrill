@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 
 import pytest
@@ -10,6 +11,12 @@ from nodrill import FromCtx, NoProviderError, inject, injected, provider
 @inject
 def refers_forward(cfg: FromCtx[DefinedLater] = injected) -> str:
     """Decorated while `DefinedLater` does not exist yet — must not raise."""
+    return cfg.tag
+
+
+@inject
+async def async_refers_forward(cfg: FromCtx[DefinedLater] = injected) -> str:
+    """Async twin of refers_forward, so the deferred wrapper stays a coroutine function."""
     return cfg.tag
 
 
@@ -54,6 +61,15 @@ class TestLazyPlan:
 
         with pytest.raises(NameError, match="cannot resolve type hints"):
             handler()  # type: ignore[call-arg]
+
+    def test_async_wrapper_stays_a_coroutine_function(self) -> None:
+        assert inspect.iscoroutinefunction(async_refers_forward)
+
+    async def test_async_deferred_build_then_cached_plan(self) -> None:
+        with provider(DefinedLater(tag="first")):
+            assert await async_refers_forward() == "first"
+        with provider(DefinedLater(tag="second")):
+            assert await async_refers_forward() == "second"
 
     def test_lazy_plan_still_honors_explicit_args(self) -> None:
         with pytest.raises(NoProviderError):

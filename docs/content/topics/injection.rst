@@ -150,8 +150,8 @@ Call ``use()`` inside the body instead, and iterate while the provider block is 
 When it resolves
 ----------------
 
-The injection plan is built once, at decoration time, from :func:`inspect.signature` and :func:`typing.get_type_hints`.
-Each call binds the arguments actually passed, fills what is missing, and calls through.
+The injection plan is built once, at decoration time, from :func:`inspect.signature` and :func:`typing.get_type_hints`, and compiles into a wrapper that mirrors the function's own signature.
+A call binds its arguments natively and pays one sentinel check per injectable parameter: whatever the caller passed explicitly is left untouched, and the rest resolves from the context active at that moment.
 
 If the annotations name something not yet defined, a string annotation under ``from __future__ import annotations`` pointing at a class further down the module, hint resolution raises :exc:`NameError` at decoration time.
 ``@inject`` catches that and defers the plan to the first call, then caches it.

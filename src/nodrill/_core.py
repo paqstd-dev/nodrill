@@ -219,6 +219,16 @@ def use(key: Any, *, default: Any = _MISSING) -> Any:
     except TypeError:
         # An unhashable key lands here and gets the same message below as any other wrong kind.
         pass
+    return _resolve_miss(key, default)
+
+
+def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
+    """Finish a lookup that missed the registry.
+
+    Validates the key kind, tries the set_default() factory, then the
+    caller's default, then raises.  Split out of use() so compiled @inject
+    wrappers can take the miss path without re-reading the registry.
+    """
     if not isinstance(key, _KEY_TYPES):
         raise TypeError(
             f"use() expects a string name or a class, got {type(key).__name__}: {key!r}"
@@ -229,7 +239,7 @@ def use(key: Any, *, default: Any = _MISSING) -> Any:
             return factory()
     if default is not _MISSING:
         return default
-    raise NoProviderError(key, registry.keys())
+    raise NoProviderError(key, _registry.get().keys())
 
 
 def active() -> Mapping[str | type[Any], Any]:

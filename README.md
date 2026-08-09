@@ -61,15 +61,15 @@ The first four rows are one function doing one read, reached four ways, so they 
 
 | operation                                              |  ns |   × |
 | ------------------------------------------------------ | --: | --: |
-| one read in a function, value passed in as a parameter |  26 | 1.0 |
-| the same read through `use()`                          |  66 | 2.5 |
-| the same read through `@inject`                        | 326 |  12 |
-| the same read through a `frozen=True` provider         | 125 | 4.8 |
-| `use(Config)` on its own, without the call frame       |  49 | 1.9 |
+| one read in a function, value passed in as a parameter |  25 | 1.0 |
+| the same read through `use()`                          |  64 | 2.6 |
+| the same read through `@inject`                        |  78 | 3.2 |
+| the same read through a `frozen=True` provider         | 124 | 5.0 |
+| `use(Config)` on its own, without the call frame       |  50 | 2.0 |
 | bare `ContextVar.get()`, for reference                 |  18 | 0.7 |
-| `with provider(...)`, enter and exit                   | 563 |  21 |
-| the same with 8 providers already open                 | 684 |  26 |
-| `wrap(fn)()`, per call into a thread                   | 575 |  22 |
+| `with provider(...)`, enter and exit                   | 576 |  23 |
+| the same with 8 providers already open                 | 762 |  31 |
+| `wrap(fn)()`, per call into a thread                   | 654 |  26 |
 
 CPython 3.14.5, arm64.
 

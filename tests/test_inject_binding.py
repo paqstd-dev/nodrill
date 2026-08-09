@@ -1,9 +1,10 @@
-"""Argument binding in @inject: the keyword fast path and the signature fallback.
+"""Argument binding in @inject: the compiled wrapper mirrors the signature.
 
-A call whose positional arguments cannot reach an injected parameter skips
-inspect binding entirely; the two paths have to agree on every shape.
+The wrapper's parameter list is generated from the function's own, so the
+interpreter binds every call shape natively; these tests pin the shapes down.
 """
 
+from collections.abc import Callable
 from typing import Annotated, Any
 
 import pytest
@@ -16,7 +17,7 @@ class Db:
         self.dsn = dsn
 
 
-class TestPositionalArgumentsBeforeTheGuard:
+class TestLeadingPositionalArguments:
     def test_leading_positional_argument(self) -> None:
         @inject
         def handler(request: str, db: FromCtx[Db] = injected) -> tuple[str, str]:
@@ -59,7 +60,7 @@ class TestPositionalArgumentsBeforeTheGuard:
             assert handler(1, b=5) == (1, 5, "pg://")
 
 
-class TestPositionalArgumentsReachingTheGuard:
+class TestInjectedParametersPassedPositionally:
     def test_injected_parameter_passed_positionally(self) -> None:
         @inject
         def handler(request: str, db: FromCtx[Db] = injected) -> str:
@@ -76,7 +77,7 @@ class TestPositionalArgumentsReachingTheGuard:
         with provider(Db()):
             assert handler("r", injected) == "pg://"
 
-    def test_positional_only_injected_parameter_uses_the_fallback(self) -> None:
+    def test_positional_only_injected_parameter(self) -> None:
         @inject
         def handler(db: FromCtx[Db] = injected, /) -> str:
             return db.dsn
@@ -174,17 +175,114 @@ class TestErrorsOnBadCalls:
         def handler(request: str, db: FromCtx[Db] = injected) -> str:
             return db.dsn
 
-        with provider(Db()), pytest.raises(TypeError, match="too many positional"):
+        with provider(Db()), pytest.raises(TypeError, match="positional arguments"):
             handler("a", "b", "c")  # type: ignore[call-arg, arg-type]
 
-    def test_a_missing_provider_is_reported_before_the_call(self) -> None:
-        # The fast path resolves before Python validates the call, so the miss surfaces first.
+    def test_a_bad_call_fails_before_resolution(self) -> None:
+        # The wrapper mirrors the signature, so Python rejects the call exactly
+        # as it would reject the undecorated function, provider or no provider.
         @inject
         def handler(db: FromCtx[Db] = injected) -> str:
             return db.dsn
 
-        with pytest.raises(LookupError, match="no active provider"):
+        with pytest.raises(TypeError, match="nope"):
             handler(nope=1)  # type: ignore[call-arg]
+
+
+class TestSignatureShapes:
+    def test_var_keyword_parameter_passes_through(self) -> None:
+        @inject
+        def handler(db: FromCtx[Db] = injected, **extra: int) -> tuple[str, dict[str, int]]:
+            return db.dsn, extra
+
+        with provider(Db()):
+            assert handler(x=1) == ("pg://", {"x": 1})
+
+    def test_keyword_only_injection_without_var_positional(self) -> None:
+        @inject
+        def handler(*, db: FromCtx[Db] = injected) -> str:
+            return db.dsn
+
+        with provider(Db()):
+            assert handler() == "pg://"
+
+    def test_positional_only_parameter_followed_by_a_positional(self) -> None:
+        @inject
+        def handler(db: FromCtx[Db] = injected, /, tag: str = "t") -> tuple[str, str]:
+            return db.dsn, tag
+
+        with provider(Db()):
+            assert handler(tag="x") == ("pg://", "x")
+
+    def test_required_parameter_after_a_default_free_marker(self) -> None:
+        @inject
+        def handler(db: FromCtx[Db], tag: str) -> tuple[str, str]:
+            return db.dsn, tag
+
+        with provider(Db()):
+            assert handler(tag="x") == ("pg://", "x")  # type: ignore[call-arg]
+            with pytest.raises(TypeError, match="missing 1 required positional argument: 'tag'"):
+                handler()  # type: ignore[call-arg]
+
+    def test_missing_required_parameters_are_reported_together(self) -> None:
+        @inject
+        def handler(db: FromCtx[Db], a: str, b: str) -> str:
+            return db.dsn
+
+        with provider(Db()), pytest.raises(TypeError, match="arguments: 'a' and 'b'"):
+            handler()  # type: ignore[call-arg]
+
+    def test_missing_required_argument_beats_the_provider_miss(self) -> None:
+        # The guard runs before any resolution, so the caller's mistake is
+        # reported even when no provider is active.
+        @inject
+        def handler(db: FromCtx[Db], tag: str) -> str:
+            return tag
+
+        with pytest.raises(TypeError, match="missing 1 required positional argument: 'tag'"):
+            handler()  # type: ignore[call-arg]
+
+    def test_sentinel_for_a_required_positional_counts_as_omitted(self) -> None:
+        @inject
+        def handler(db: FromCtx[Db], tag: str) -> str:
+            return tag
+
+        with provider(Db()), pytest.raises(TypeError, match="missing 1 required"):
+            handler(injected, injected)
+
+    def test_missing_arguments_read_like_the_interpreter(self) -> None:
+        @inject
+        def handler(db: FromCtx[Db], a: str, b: str, c: str) -> None: ...
+
+        def twin(a: str, b: str, c: str) -> None: ...
+
+        with provider(Db()), pytest.raises(TypeError) as via_wrapper:
+            handler()  # type: ignore[call-arg]
+        with pytest.raises(TypeError) as via_twin:
+            twin()  # type: ignore[call-arg]
+        assert str(via_wrapper.value).split("() ", 1)[1] == str(via_twin.value).split("() ", 1)[1]
+
+    def test_parameter_sharing_the_internal_prefix(self) -> None:
+        @inject
+        def handler(_nd_tag: str = "t", db: FromCtx[Db] = injected) -> tuple[str, str]:
+            return _nd_tag, db.dsn
+
+        with provider(Db()):
+            assert handler() == ("t", "pg://")
+
+    def test_attribute_marker_with_a_non_identifier_attribute(self) -> None:
+        @inject
+        def handler(v: Annotated[str, from_ctx("app", attr="strange-name")] = injected) -> str:
+            return v
+
+        with provider("app", **{"strange-name": "x"}):  # type: ignore[call-overload]
+            assert handler() == "x"
+
+    def test_lambda_in_by_name_mode(self) -> None:
+        handler: Callable[..., Any] = inject(from_="app")(lambda db=injected: db)
+
+        with provider("app", db="pg"):
+            assert handler() == "pg"
 
 
 class TestCallerKwargsAreNotLeaked:

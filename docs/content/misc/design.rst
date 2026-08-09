@@ -120,17 +120,19 @@ Patching ``__setattr__`` on the instance was rejected, since it mutates user obj
 @inject mechanics
 -----------------
 
-The plan is built once at decoration: :func:`inspect.signature` plus ``get_type_hints(include_extras=True)``, producing resolver closures per parameter.
+The plan is built once at decoration: :func:`inspect.signature` plus ``get_type_hints(include_extras=True)`` find the marked parameters and their context keys.
 
-Most calls never touch :mod:`inspect` again.
-The plan stores ``pos_guard``, the lowest positional index of any injectable parameter, so a call with no more leading positional arguments than that cannot have filled one; combined with the existing check that every injectable parameter accepts a keyword, the resolved values go straight into the wrapper's own ``kwargs`` and the call goes through.
-That covers every method call, since ``self`` sits below the guard.
-``bind_partial`` on the cached signature remains the fallback, and is what a call that passes an injectable parameter positionally uses, including the by-name case where the sentinel has to be *removed* so the parameter's own default applies, which cannot be done by slicing an argument tuple.
+Calls never touch :mod:`inspect` again.
+The plan compiles into a wrapper that mirrors the function's own signature, the way :mod:`dataclasses` builds ``__init__``: the interpreter binds arguments natively, each injectable parameter defaults to the public ``injected`` sentinel, and the body is one identity check per parameter — an inlined registry read on the hit path, with a miss handed to the same fallback path ``use()`` takes, which owns ``set_default`` and the error.
+There is no repacking through ``*args`` and no signature walk at call time, whatever shape the call takes; compilation is paid once, at decoration, in microseconds per function.
+The generated source is registered in :mod:`linecache` under a counter-unique filename, so a traceback through a wrapper shows its actual lines and ``pdb`` can step through them; the entry is removed again when the wrapper itself is garbage collected.
+The resolution helpers are bound into the wrapper at decoration, so patching nodrill internals afterwards does not change compiled wrappers; the supported seams are ``provider()``, ``set_default()`` and ``isolate()``.
 
 Two consequences are worth knowing.
-Injected values arrive as keyword arguments rather than normalised into positional ones, and on the fast path resolution happens before the interpreter validates the call, so a missing provider surfaces ahead of a bad-argument :exc:`TypeError`.
+A bad call fails before any resolution runs: unknown keywords and over-long positional lists natively, and an under-supplied call with a missing-argument :exc:`TypeError` worded exactly as the interpreter words it — though the arity range such messages report counts injectable parameters as optional, which from the caller's side they are.
+And a call that passes an injected parameter positionally costs the same as any other, since there is no fallback path for it to land on.
 
-If hint resolution hits a :exc:`NameError` at decoration, from string annotations naming things defined later, the plan is built lazily on the first call and cached; a racing double build is harmless because plans are deterministic.
+If hint resolution hits a :exc:`NameError` at decoration, from string annotations naming things defined later, plan build and compilation move behind a dispatching wrapper to the first call and are cached; a racing double build is harmless because plans are deterministic.
 A name that never resolves fails at call time with the function named in the error, unless nothing in the signature asked for injection: hints exist here to find markers, so a function without one is called through rather than broken over a ``TYPE_CHECKING``-only annotation.
 
 The ``injected`` sentinel is an ``Any``-typed default with teeth: attribute access, truthiness, and calls on it raise with a message pointing at the missing ``@inject`` or provider, because the alternative is an :exc:`AttributeError` three frames away from the cause.

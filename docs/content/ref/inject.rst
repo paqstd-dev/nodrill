@@ -32,10 +32,9 @@ inject
    Applies to plain functions, ``async def`` coroutines, instance methods, classmethods and staticmethods, in either decorator order.
    A function with no injectable parameters is returned unwrapped.
 
-   The injection plan is built once, at decoration time, from :func:`inspect.signature` and :func:`typing.get_type_hints`.
-   Calls whose positional arguments cannot reach an injected parameter, which includes every method call where only ``self`` is positional, resolve straight into keyword arguments and skip signature binding entirely.
-   Only a call that passes an injected parameter positionally is bound against the signature.
-   If hints cannot be resolved then, because a string annotation names something defined later, the plan is deferred to the first call and cached.
+   The injection plan is built once, at decoration time, from :func:`inspect.signature` and :func:`typing.get_type_hints`, and compiles into a wrapper that mirrors the function's own signature.
+   The interpreter binds every call shape natively, whichever way an injected parameter is passed, and a call that misuses the signature fails before any resolution runs, in the interpreter's own wording; only the arity range in those messages differs, counting injectable parameters as optional.
+   If hints cannot be resolved at decoration, because a string annotation names something defined later, the plan is deferred to the first call and cached.
    A name that never resolves raises :exc:`NameError` at call time, naming the function, unless no annotation on it asks for injection at all: a function nodrill has nothing to do for is called through untouched rather than broken over hints only a checker reads.
    Annotations that do carry a marker have to name things that exist at runtime, so the import cannot sit behind ``TYPE_CHECKING``.
 

@@ -60,7 +60,7 @@ Is it fast?
 
 A lookup is a dict access on a :class:`~contextvars.ContextVar`, with the key check moved off the hit path.
 Entering a provider copies the registry, which holds one entry per active key, so it is proportional to how many providers are open, typically a handful.
-``@inject`` resolves into keyword arguments and only falls back to binding the signature when a call passes an injected parameter positionally.
+``@inject`` compiles a wrapper mirroring the function's signature at decoration time, so a call binds natively and pays one sentinel check per injectable parameter.
 
 None of that is free, and none of it is likely to be what your profile blames.
 The README carries the current numbers, measured against the same read with the value handed in as a parameter, which is the alternative the library replaces.
