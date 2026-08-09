@@ -133,6 +133,67 @@ A callee that mutates it mutates the caller's object, which is exactly what you 
 Rebinding the name inside a callee does nothing, as with any Python object: ``use(Config)`` returns the object, and assigning to that local only changes the local.
 To publish a different value, open another provider.
 
+Layers that accumulate
+----------------------
+
+A request scope is rarely known at the boundary.
+Middleware knows the request id, authentication adds the actor, the view adds the action, and something five frames below wants all three.
+Same-key providers shadow, so a second ``provider("audit", ...)`` would hide what the first one set.
+
+``extend=True`` lays a layer over the namespace the same name already holds:
+
+.. code-block:: python
+
+   with provider("audit", request_id=rid):
+       with provider("audit", extend=True, actor_id=user.pk):
+           with provider("audit", extend=True, reason=payload["reason"]):
+               document.save()              # use("audit") sees all three
+
+       # here use("audit") sees request_id and actor_id again
+
+It is still one name, one registry entry and one O(1) lookup; what changed is what the entry holds.
+Exit is the ordinary token reset, so each block restores exactly the layer that was open before it.
+Values are laid over attribute by attribute, so a name both layers set takes the inner value.
+
+With nothing open under that name, ``extend=True`` behaves as a plain provider.
+That is the property the feature exists for: a layer does not have to know whether it is the first one.
+
+The copy is a snapshot
+~~~~~~~~~~~~~~~~~~~~~~
+
+The enclosing namespace is copied on entry and never written to.
+That is what keeps a sibling task or thread, which holds a reference to the outer namespace, from seeing a layer that was opened after it started.
+
+From the moment the inner layer is entered, the two layers are two objects.
+
+.. code-block:: python
+
+   with provider("audit", request_id="r-1") as outer:
+       with provider("audit", extend=True, actor_id=7):
+           outer.request_id = "r-2"         # not visible in here
+           use("audit").reason = "cleanup"  # not visible out there
+
+       use("audit").request_id              # "r-2"
+
+Within one layer nothing is copied: a callee still mutates the namespace the block yielded, as it does for any provided value.
+It is the layer boundary that copies.
+
+The merge happens on entry rather than when ``provider()`` is called, so a provider object entered twice layers over whatever encloses it each time.
+
+What it does not do
+~~~~~~~~~~~~~~~~~~~
+
+``extend=True`` belongs to string-named providers.
+An instance provider layers by providing another value, which for a dataclass is :func:`dataclasses.replace`, and asking for ``extend=True`` there says so.
+
+The merge is one level deep, always.
+A namespace holding a ``dict`` gets the inner layer's ``dict``, not a merge of the two: merging by value type would make the rule about types rather than about scopes.
+
+Extending a name that holds something other than a :class:`~nodrill.Namespace` raises on entry, naming both types, rather than quietly shadowing it.
+
+Extending a ``frozen=True`` layer works, reading the outer attributes through the read-only view, and the layer it produces is writable unless it asks for ``frozen=True`` itself.
+Freezing is a property of the provider rather than of the value, so it is not inherited.
+
 Lazy providers
 --------------
 

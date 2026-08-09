@@ -36,6 +36,9 @@ END = "<!-- /benchmarks -->"
 # Deep enough that a per-provider cost would show, shallow enough to stay realistic.
 STACK_DEPTH = 8
 
+# What a request scope carries by the time the layers are done accumulating.
+NAMESPACE_WIDTH = 8
+
 
 @dataclass
 class Config:
@@ -75,16 +78,31 @@ REFERENCE = "bare `ContextVar.get()`, for reference"
 ENTER = "`with provider(...)`, enter and exit"
 STACKED = f"the same with {STACK_DEPTH} providers already open"
 LAZY_ENTER = "`with provider(lazy(...))`, entered and exited unread"
+EXTEND = f"`with provider(..., extend=True)`, over an {NAMESPACE_WIDTH}-attribute namespace"
 THREAD = "`wrap(fn)()`, per call into a thread"
 
 # Handing the value in is the alternative nodrill replaces, so it is what the ratios divide by.
 BASELINE = PASSED
 
 # The published order: the comparable reads, then the floor, then the scope costs.
-ORDER = (PASSED, USED, INJECTED, FROZEN, LAZY, ALONE, REFERENCE, ENTER, STACKED, LAZY_ENTER, THREAD)
+ORDER = (
+    PASSED,
+    USED,
+    INJECTED,
+    FROZEN,
+    LAZY,
+    ALONE,
+    REFERENCE,
+    ENTER,
+    STACKED,
+    LAZY_ENTER,
+    EXTEND,
+    THREAD,
+)
 
 ENTER_STATEMENT = "\nwith provider(config):\n    pass\n"
 LAZY_ENTER_STATEMENT = "\nwith provider(lazy(Config, Config)):\n    pass\n"
+EXTEND_STATEMENT = "\nwith provider('scope', extend=True, added=1):\n    pass\n"
 
 # The cases that share one live provider for Config, which is one entry in the registry.
 PROVIDED: tuple[tuple[str, str], ...] = (
@@ -126,6 +144,10 @@ def run() -> dict[str, float]:
     # And the lazy row prices the cell after the first read has already resolved it.
     with provider(lazy(Config, Config)):
         timings[LAZY] = measure("read_used('r')", {**globals(), **locals()})
+
+    # An extending layer copies the enclosing namespace too, so it is priced over a full one.
+    with provider("scope", **{f"field{i}": i for i in range(NAMESPACE_WIDTH)}):
+        timings[EXTEND] = measure(EXTEND_STATEMENT, {**globals(), **locals()})
 
     # Entering copies the registry, so the claim that the copy scales with depth is priced here.
     with ExitStack() as stack:
