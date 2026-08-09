@@ -1,0 +1,15 @@
+codecov:
+  notify:
+    # Keep in step with the Python matrix in ci.yml.
+    after_n_builds: 5
+
+coverage:
+  status:
+    project:
+      default:
+        target: 100%
+        threshold: 0%
+    patch:
+      default:
+        target: 100%
+        threshold: 0%

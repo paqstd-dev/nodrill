@@ -1,8 +1,9 @@
 # nodrill
 
 [![CI](https://github.com/paqstd-dev/nodrill/actions/workflows/ci.yml/badge.svg)](https://github.com/paqstd-dev/nodrill/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://pypi.org/project/nodrill/)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Coverage](https://codecov.io/gh/paqstd-dev/nodrill/graph/badge.svg)](https://codecov.io/gh/paqstd-dev/nodrill)
+[![PyPI](https://img.shields.io/pypi/v/nodrill)](https://pypi.org/project/nodrill/)
+[![Python](https://img.shields.io/pypi/pyversions/nodrill.svg)](https://pypi.org/project/nodrill/)
 
 nodrill gives a call tree a shared, scoped context. Values set in a `provider` block are visible to any function below it through `use()`, without being passed through the signatures in between.
 It is built on `contextvars`, so lookups are thread-safe and asyncio-task-safe, and it has no dependencies.
@@ -102,7 +103,7 @@ Start with the [tutorial](https://nodrill.readthedocs.io/en/latest/content/intro
 
 ## Contributing
 
-Bug reports and small focused pull requests are welcome. See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
+Bug reports and small focused pull requests are welcome. See [CONTRIBUTING.md](https://github.com/paqstd-dev/nodrill/blob/main/.github/CONTRIBUTING.md).
 `make install` sets up the environment, and `make` runs the same gate CI does.
 
 Security issues go through a [private advisory](https://github.com/paqstd-dev/nodrill/security/advisories/new) rather than the issue tracker.

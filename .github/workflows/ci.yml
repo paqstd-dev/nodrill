@@ -8,14 +8,14 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Nothing here needs a token; the jobs that do grant it themselves.
+# Nothing here needs a token. The jobs that do grant it themselves.
 permissions: {}
 
 env:
   FORCE_COLOR: "1"
-  UV_VERSION: "0.11.14"
+  UV_VERSION: "0.12.3"
 
 jobs:
   lint:
@@ -30,8 +30,7 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff format --check .
       - run: uv run ruff check .
-      # Through make, because the file list and the README exemption are
-      # defined there and would drift if they were spelled out twice.
+      # Through make, because the file list comes from git there.
       - run: make lint-md
 
   typecheck:
@@ -63,6 +62,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --locked
       - run: uv run coverage run -m pytest
+      # Uploads before the gate, because coverage report exits non-zero under 100 percent.
+      - run: uv run coverage xml
+      - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          fail_ci_if_error: true
       - run: uv run coverage report
 
   docs:
