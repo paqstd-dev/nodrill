@@ -1,9 +1,9 @@
 # nodrill
 
+[![PyPI version](https://img.shields.io/pypi/v/nodrill)](https://pypi.org/project/nodrill/)
+[![PyPI Supported Python Versions](https://img.shields.io/pypi/pyversions/nodrill.svg)](https://pypi.org/project/nodrill/)
 [![CI](https://github.com/paqstd-dev/nodrill/actions/workflows/ci.yml/badge.svg)](https://github.com/paqstd-dev/nodrill/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/paqstd-dev/nodrill/graph/badge.svg)](https://codecov.io/gh/paqstd-dev/nodrill)
-[![PyPI](https://img.shields.io/pypi/v/nodrill)](https://pypi.org/project/nodrill/)
-[![Python](https://img.shields.io/pypi/pyversions/nodrill.svg)](https://pypi.org/project/nodrill/)
+[![codecov](https://codecov.io/gh/paqstd-dev/nodrill/graph/badge.svg)](https://codecov.io/gh/paqstd-dev/nodrill)
 
 nodrill gives a call tree a shared, scoped context. Values set in a `provider` block are visible to any function below it through `use()`, without being passed through the signatures in between.
 It is built on `contextvars`, so lookups are thread-safe and asyncio-task-safe, and it has no dependencies.
