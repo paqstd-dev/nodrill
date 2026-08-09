@@ -1,0 +1,66 @@
+/* nodrill docs — design tokens
+   Shibuya's teal accent is used as shipped; everything below is a private
+   --nd-* namespace for surfaces, radii, shadows, and code-block chrome. */
+
+:root {
+  --nd-radius-sm: 8px;
+  --nd-radius: 12px;
+  --nd-radius-lg: 18px;
+  --nd-maxw: 90rem;
+
+  --nd-surface-1: #ffffff;
+  --nd-surface-2: #f5f7f8;
+  --nd-surface-3: #eceff1;
+  --nd-border: #e3e8ea;
+  --nd-border-strong: #d2d9dc;
+
+  --nd-shadow-sm: 0 1px 2px rgba(15, 34, 38, 0.05);
+  --nd-shadow: 0 1px 2px rgba(15, 34, 38, 0.04), 0 10px 28px rgba(15, 34, 38, 0.07);
+
+  /* landing code mockup chrome — follows the active theme */
+  --nd-term-bg: #ffffff;
+  --nd-term-border: var(--nd-border-strong);
+  --nd-term-text: #1f2328;
+  --nd-term-muted: #6e7781;
+  --nd-term-dot-red: #ef6b6b;
+  --nd-term-dot-amber: #f0b449;
+  --nd-term-dot-green: #4fc77f;
+
+  /* doc code-block chrome — follows the active theme */
+  --nd-code-bg: var(--nd-surface-2);
+  --nd-code-border: var(--nd-border-strong);
+  --nd-code-caption-text: #62707a;
+
+  /* hand-tokenised syntax palette for the landing mockups */
+  --nd-syntax-keyword: #cf222e;
+  --nd-syntax-name: #6639ba;
+  --nd-syntax-string: #0a3069;
+  --nd-syntax-number: #0550ae;
+  --nd-syntax-decorator: #953800;
+}
+
+html.dark {
+  --nd-surface-1: #0c1214;
+  --nd-surface-2: #121b1e;
+  --nd-surface-3: #18262a;
+  --nd-border: #1f2f34;
+  --nd-border-strong: #2a3d43;
+
+  --nd-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --nd-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.5);
+
+  --nd-term-bg: #0a1012;
+  --nd-term-border: #1f2f34;
+  --nd-term-text: #dfe7e9;
+  --nd-term-muted: #7d8e93;
+
+  --nd-code-bg: #0a1012;
+  --nd-code-border: #1f2f34;
+  --nd-code-caption-text: #7d8e93;
+
+  --nd-syntax-keyword: #ff9d8a;
+  --nd-syntax-name: #8fd6ff;
+  --nd-syntax-string: #7fd6a0;
+  --nd-syntax-number: #f5b860;
+  --nd-syntax-decorator: #f0b449;
+}

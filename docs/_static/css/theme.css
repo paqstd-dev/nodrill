@@ -1,0 +1,287 @@
+/* nodrill docs — doc-page restyle
+   Layered over Shibuya. Only surfaces, spacing, and components are refined;
+   colour and typography come from the theme itself. */
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.yue {
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.yue h1,
+.yue h2,
+.yue h3,
+.yue h4 {
+  letter-spacing: -0.018em;
+}
+
+.yue h1 {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+/* hairline separator above every section heading */
+.yue h2 {
+  margin-top: 2.6em;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--sy-c-divider);
+}
+
+.yue h2:first-of-type {
+  margin-top: 1.6em;
+}
+
+/* anchor offset so headings clear the sticky header */
+.yue :is(h1, h2, h3, h4, h5, h6):target,
+.yue section[id] {
+  scroll-margin-top: calc(var(--sy-s-navbar-height) + 1.5rem);
+}
+
+.sy-head {
+  border-bottom: 1px solid transparent;
+}
+
+.sy-head-blur {
+  border-bottom: 1px solid var(--nd-border);
+  background-color: color-mix(in srgb, var(--sy-c-background) 82%, transparent);
+}
+
+.sy-head-brand img {
+  height: 20px;
+  width: auto;
+}
+
+.globaltoc a,
+.sy-rside a {
+  border-radius: var(--nd-radius-sm);
+  transition: color 0.12s ease, background-color 0.12s ease;
+}
+
+/* full-width rows so the active state reads as a clean pill rather than a
+   tight blob hugging the text */
+.globaltoc > ul a {
+  display: block;
+  padding: 0.32rem 0.6rem;
+}
+
+.globaltoc li {
+  margin: 0.12rem 0;
+}
+
+.globaltoc > ul a:hover {
+  background-color: var(--nd-surface-2);
+  color: var(--accent-11);
+}
+
+/* ancestor of the open page — coloured label only, no fill */
+.globaltoc .current > a {
+  color: var(--accent-11);
+  font-weight: 600;
+}
+
+/* the page currently open — soft accent pill */
+.globaltoc > ul a.current {
+  background-color: var(--accent-a3);
+  color: var(--accent-11);
+  font-weight: 600;
+}
+
+.sy-rside a:hover,
+.sy-rside a.active {
+  color: var(--accent-11);
+}
+
+.sy-rside a.active {
+  font-weight: 600;
+}
+
+.yue a {
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+/* Every code block is one bordered, rounded card. A captioned block wraps in
+   .literal-block-wrapper; a bare block is just the highlight- div. The card
+   chrome lives on whichever is outermost, and the inner elements carry none. */
+
+.literal-block-wrapper,
+div[class*="highlight-"] {
+  border: 1px solid var(--nd-code-border);
+  border-radius: var(--nd-radius);
+  overflow: hidden;
+}
+
+.literal-block-wrapper div[class*="highlight-"] {
+  border: 0;
+  border-radius: 0;
+}
+
+.highlight,
+.highlight pre,
+pre.literal-block {
+  border: 0;
+}
+
+.highlight pre,
+pre.literal-block {
+  border-radius: 0;
+  padding: 1rem 1.15rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.highlight,
+.highlight pre {
+  background-color: var(--nd-code-bg);
+}
+
+/* caption — a terminal title bar with traffic-light dots */
+.code-block-caption {
+  align-items: center;
+  font-family: var(--sy-f-mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 0.62rem 1.1rem;
+  color: var(--nd-code-caption-text);
+  background-color: var(--nd-code-bg);
+  border-bottom: 1px solid var(--nd-code-border);
+}
+
+.code-block-caption::before {
+  content: "";
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background-color: var(--nd-term-dot-red);
+  box-shadow: 18px 0 0 var(--nd-term-dot-amber), 36px 0 0 var(--nd-term-dot-green);
+  margin-right: 3rem;
+}
+
+.yue :not(pre) > code {
+  border-radius: 6px;
+  font-size: 0.875em;
+  padding: 0.12em 0.38em;
+}
+
+/* copy button — tucked into the top-right corner */
+.highlight .copybtn,
+div[class*="highlight-"] .copybtn {
+  top: 0.5rem;
+  right: 0.5rem;
+  opacity: 0;
+  border-radius: 6px;
+  transition: opacity 0.15s ease;
+}
+
+.highlight:hover .copybtn,
+div[class*="highlight-"]:hover .copybtn {
+  opacity: 0.85;
+}
+
+.admonition {
+  border-radius: var(--nd-radius);
+  border-left-width: 3px;
+  box-shadow: var(--nd-shadow-sm);
+}
+
+/* the title bar bleeds to the card edges through negative margins, so its top
+   corners must round to match the card or they poke past it */
+.admonition > p.admonition-title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  border-top-left-radius: var(--nd-radius);
+  border-top-right-radius: var(--nd-radius);
+}
+
+.sd-card {
+  border-radius: var(--nd-radius-lg) !important;
+  border: 1px solid var(--nd-border) !important;
+  background-color: var(--nd-surface-1) !important;
+  box-shadow: var(--nd-shadow-sm);
+  overflow: hidden;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.sd-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent-7) !important;
+  box-shadow: var(--nd-shadow);
+}
+
+.yue table {
+  border-radius: var(--nd-radius);
+  overflow: hidden;
+  border: 1px solid var(--nd-border);
+}
+
+.yue table thead th {
+  background-color: var(--nd-surface-2);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--sy-c-light);
+}
+
+.sy-searchbox input,
+.sy-searchbox button {
+  border-radius: var(--nd-radius-sm);
+}
+
+/* the .. contents:: directive, rendered as a bordered surface card so it reads
+   like the landing's blocks rather than a loose bullet list */
+.yue nav.contents,
+.yue div.contents.topic {
+  background-color: var(--nd-surface-2);
+  border: 1px solid var(--nd-border);
+  border-radius: var(--nd-radius);
+  padding: 1.1rem 1.35rem;
+}
+
+.yue nav.contents > .topic-title,
+.yue div.contents.topic > .topic-title {
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--sy-c-light);
+  margin: 0 0 0.55rem;
+}
+
+.yue nav.contents ul,
+.yue div.contents.topic ul {
+  margin: 0;
+}
+
+/* the .. rubric:: directive used on section index pages */
+.yue p.rubric {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent-11);
+  border-bottom: 1px solid var(--sy-c-divider);
+  padding-bottom: 0.4rem;
+  margin-top: 2.4rem;
+}
+
+/* API entries — a left rule ties the signature to its prose */
+.yue dl.py > dt {
+  border-left: 3px solid var(--accent-a6);
+  padding-left: 0.7rem;
+  background: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-card,
+  .sd-card:hover {
+    transition: none;
+    transform: none;
+  }
+}

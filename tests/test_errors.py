@@ -1,0 +1,147 @@
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
+
+import pytest
+
+from nodrill import NoProviderError, provider, set_default, use
+
+
+@dataclass
+class Settings:
+    retries: int = 3
+
+
+class TestNoProvider:
+    @pytest.mark.parametrize("key", ["app", Settings], ids=["string-key", "class-key"])
+    def test_use_without_provider_raises(self, key: Any) -> None:
+        with pytest.raises(NoProviderError):
+            use(key)
+
+    def test_is_lookup_error(self) -> None:
+        with pytest.raises(LookupError):
+            use("app")
+
+    @pytest.mark.parametrize(
+        "fragment",
+        ["'database'", "'app'", "Settings", "did you forget `with provider('database')`"],
+        ids=["missing-key", "active-string-key", "active-class-key", "hint"],
+    )
+    def test_message_includes(self, fragment: str) -> None:
+        with provider("app"), provider(Settings()):
+            with pytest.raises(NoProviderError) as exc_info:
+                use("database")
+        assert fragment in str(exc_info.value)
+
+    def test_exception_carries_key_and_active_keys(self) -> None:
+        with provider("app"), provider(Settings()):
+            with pytest.raises(NoProviderError) as exc_info:
+                use("database")
+        assert exc_info.value.key == "database"
+        assert set(exc_info.value.active_keys) == {"app", Settings}
+
+    def test_message_when_nothing_is_active(self) -> None:
+        with pytest.raises(NoProviderError, match="No providers are active"):
+            use("app")
+
+    def test_class_key_message_mentions_set_default(self) -> None:
+        with pytest.raises(NoProviderError, match=r"set_default\(Settings, \.\.\.\)"):
+            use(Settings)
+
+    def test_typo_suggestion(self) -> None:
+        with provider("database"), provider("cache"):
+            with pytest.raises(NoProviderError, match="Did you mean 'database'\\?"):
+                use("datbase")
+
+    def test_no_suggestion_when_nothing_is_close(self) -> None:
+        with provider("cache"):
+            with pytest.raises(NoProviderError) as exc_info:
+                use("zzz")
+        assert "Did you mean" not in str(exc_info.value)
+
+    def test_hand_built_error_with_an_odd_key_still_builds_a_message(self) -> None:
+        """NoProviderError is public API: use() screens keys, a direct caller need not."""
+        assert "42" in str(NoProviderError(42))
+
+    def test_use_rejects_non_key_types(self) -> None:
+        with pytest.raises(TypeError, match="string name or a class"):
+            use(42)  # type: ignore[call-overload]
+
+
+class TestSetDefault:
+    @pytest.mark.parametrize(
+        ("factory", "expected_retries"),
+        [(Settings, 3), (lambda: Settings(retries=9), 9)],
+        ids=["class-as-factory", "lambda-factory"],
+    )
+    def test_default_returned_outside_provider(
+        self, factory: Callable[[], Settings], expected_retries: int
+    ) -> None:
+        set_default(Settings, factory)
+        assert use(Settings).retries == expected_retries
+
+    def test_provider_still_wins_over_default(self) -> None:
+        set_default(Settings, Settings)
+        with provider(Settings(retries=1)):
+            assert use(Settings).retries == 1
+        assert use(Settings).retries == 3
+
+    def test_factory_called_per_miss(self) -> None:
+        calls: list[int] = []
+
+        def factory() -> Settings:
+            calls.append(1)
+            return Settings()
+
+        set_default(Settings, factory)
+        use(Settings)
+        use(Settings)
+        assert len(calls) == 2
+
+    def test_clearing_default_restores_error(self) -> None:
+        set_default(Settings, Settings)
+        set_default(Settings, None)
+        with pytest.raises(NoProviderError):
+            use(Settings)
+
+    def test_returns_class_for_chaining(self) -> None:
+        assert set_default(Settings, Settings) is Settings
+
+    def test_rejects_non_class(self) -> None:
+        with pytest.raises(TypeError, match="registers classes"):
+            set_default("app", dict)  # type: ignore[arg-type]
+
+    def test_rejects_non_callable_factory(self) -> None:
+        with pytest.raises(TypeError, match="factory must be callable"):
+            set_default(Settings, Settings())  # type: ignore[arg-type]
+
+    def test_default_with_mutable_field(self) -> None:
+        @dataclass
+        class Bag:
+            items: list[str] = field(default_factory=list)
+
+        set_default(Bag, Bag)
+        use(Bag).items.append("x")
+        assert use(Bag).items == []  # fresh instance per miss, not a cached singleton
+
+
+class TestUseDefault:
+    def test_call_site_default_for_string_key(self) -> None:
+        assert use("app", default=None) is None
+
+    def test_call_site_default_for_class_key(self) -> None:
+        fallback = Settings(retries=0)
+        assert use(Settings, default=fallback) is fallback
+
+    def test_provider_wins_over_call_site_default(self) -> None:
+        with provider("app", mode="live"):
+            namespace = use("app", default=None)
+        assert namespace is not None
+        assert namespace.mode == "live"
+
+    def test_registered_default_wins_over_call_site_default(self) -> None:
+        set_default(Settings, lambda: Settings(retries=7))
+        assert use(Settings, default=Settings(retries=0)).retries == 7
+
+    def test_none_is_a_real_default(self) -> None:
+        assert use("missing", default=None) is None

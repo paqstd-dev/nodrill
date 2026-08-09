@@ -1,0 +1,10 @@
+:layout: 404
+:orphan:
+
+Page not found
+==============
+
+The page you asked for is not here.
+It may have been renamed, or the link that brought you here may be stale.
+
+Start from the :doc:`tutorial </content/intro/quickstart>`, browse the :doc:`topic guides </content/topics/index>`, or look the name up in the :doc:`API reference </content/ref/index>`.

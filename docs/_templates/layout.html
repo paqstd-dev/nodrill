@@ -1,0 +1,8 @@
+{# nodrill override of Shibuya's layout.html.
+   layout.html redeclares the `footer` block inside its own `document`, so
+   emptying it in base.html alone leaves the footer on every page that inherits
+   from here (404, simple, landing). Empty it a second time so the whole site
+   ends on its own content. #}
+{%- extends "!layout.html" -%}
+
+{%- block footer -%}{%- endblock -%}

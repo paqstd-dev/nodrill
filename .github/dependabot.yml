@@ -1,0 +1,27 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    # A compromised release is usually yanked within days, so let updates age first.
+    # https://blog.yossarian.net/2025/11/21/We-should-all-be-using-dependency-cooldowns
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The package itself has no dependencies, so this only moves the dev and docs tooling.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    # The auto default reads a committed uv.lock as an application and raises every >= floor.
+    versioning-strategy: increase-if-necessary
+    groups:
+      dev-tooling:
+        patterns: ["*"]

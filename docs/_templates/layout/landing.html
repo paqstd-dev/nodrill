@@ -1,0 +1,19 @@
+{# nodrill override of Shibuya's landing layout.
+   Overrides `document` to render a full-bleed front page while keeping the
+   real site header. The page closes on landing/cta.html; the theme footer is
+   dropped here as it is everywhere else, see _templates/base.html. The
+   index.rst body, which holds nothing but hidden toctrees, is intentionally
+   not rendered. #}
+{%- extends "layout.html" -%}
+
+{%- block document -%}
+  {%- block header -%}
+    {% include "partials/site-head.html" with context %}
+  {%- endblock -%}
+
+  <main class="nd-landing" role="main">
+    {% include "landing/hero.html" %}
+    {% include "landing/features.html" %}
+    {% include "landing/cta.html" %}
+  </main>
+{%- endblock -%}
