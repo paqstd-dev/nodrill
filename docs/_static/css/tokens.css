@@ -1,11 +1,119 @@
 /* nodrill docs — design tokens
-   Shibuya's teal accent is used as shipped; everything below is a private
-   --nd-* namespace for surfaces, radii, shadows, and code-block chrome. */
+   Self-hosted fonts, a teal accent ramp that retargets Shibuya's Radix
+   scale, and a private --nd-* namespace for surfaces, radii, and shadows. */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/inter-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/inter-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../fonts/inter-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/inter-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/jetbrains-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/jetbrains-mono-500.woff2") format("woff2");
+}
+
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Shibuya binds --accent-* to --teal-* when accent_color is "teal", so
+   redefining the teal scale recolors every accented surface. The ramp keeps
+   Radix's step profile and is retargeted so step 9 is the logo's teal. */
+
+:root {
+  --teal-1: #fafdfc;
+  --teal-2: #f2faf8;
+  --teal-3: #def4ef;
+  --teal-4: #c9ece4;
+  --teal-5: #b4e1d9;
+  --teal-6: #9cd4ca;
+  --teal-7: #7ec1b8;
+  --teal-8: #4eaaa0;
+  --teal-9: #0d9488;
+  --teal-10: #088b7f;
+  --teal-11: #007769;
+  --teal-contrast: #ffffff;
+  --teal-surface: #eff8f6cc;
+
+  --teal-a1: #00ba9105;
+  --teal-a2: #0099770c;
+  --teal-a3: #00b4931f;
+  --teal-a4: #00b18d33;
+  --teal-a5: #00a38647;
+  --teal-a6: #00957b5e;
+  --teal-a7: #0088757c;
+  --teal-a8: #008778ac;
+  --teal-a9: #008d80ed;
+  --teal-a10: #008679f2;
+  --teal-a11: #007769;
+}
+
+html.dark {
+  --teal-1: #0c1413;
+  --teal-2: #101a19;
+  --teal-3: #0c2826;
+  --teal-4: #023431;
+  --teal-5: #08403d;
+  --teal-6: #124e49;
+  --teal-7: #1a5f59;
+  --teal-8: #1d726a;
+  --teal-9: #0d9488;
+  --teal-10: #0ba292;
+  --teal-11: #0ec6ab;
+  --teal-contrast: #ffffff;
+  --teal-surface: #12242280;
+
+  --teal-a1: #00cca205;
+  --teal-a2: #22e8da0c;
+  --teal-a3: #1becda1e;
+  --teal-a4: #1cecdd2d;
+  --teal-a5: #1cecde3b;
+  --teal-a6: #28ecdc4b;
+  --teal-a7: #34eadc5f;
+  --teal-a8: #37ecdb75;
+  --teal-a9: #22ecd89f;
+  --teal-a10: #1decd5ae;
+  --teal-a11: #17ebcbd6;
+}
 
 :root {
   --nd-radius-sm: 8px;
   --nd-radius: 12px;
-  --nd-radius-lg: 18px;
   --nd-maxw: 90rem;
 
   --nd-surface-1: #ffffff;

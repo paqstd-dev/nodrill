@@ -6,6 +6,13 @@
    not rendered. #}
 {%- extends "layout.html" -%}
 
+{# layout.html, unlike layout/default.html, includes no page metadata, so the
+   :description: and :cover: fields in index.rst would reach no meta tag. #}
+{%- block extrahead -%}
+  {{ super() }}
+  {% include "components/meta-opengraph.html" %}
+{%- endblock -%}
+
 {%- block document -%}
   {%- block header -%}
     {% include "partials/site-head.html" with context %}
@@ -13,6 +20,7 @@
 
   <main class="nd-landing" role="main">
     {% include "landing/hero.html" %}
+    {% include "landing/scope.html" %}
     {% include "landing/features.html" %}
     {% include "landing/cta.html" %}
   </main>

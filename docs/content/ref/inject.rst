@@ -15,7 +15,7 @@ inject
 
    Fill missing parameters from the current context at call time.
 
-   :param from_: Opt into by-name mode.
+   :param from\_: Opt into by-name mode.
       A string name or a class; every parameter whose name matches an attribute of ``use(from_)`` is filled from it.
    :raises TypeError: ``from_`` is neither a string nor a class; the decorated object is not callable; it is a class, a generator or an async-generator function; or a marker annotates ``*args`` or ``**kwargs``.
 

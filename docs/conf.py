@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from importlib.metadata import version as package_version
 
 project = "nodrill"
@@ -17,14 +18,10 @@ extensions = [
     "sphinx.ext.extlinks",
     "sphinx.ext.intersphinx",
     "sphinx_copybutton",
-    "sphinx_design",
 ]
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", ".DS_Store", "Thumbs.db"]
-
-# The 404 page is deliberately outside every toctree.
-suppress_warnings = ["toc.not_included"]
 
 # Single backticks mean inline code, the way they read in every other file
 # in the repo; broken explicit roles still fail the build under nitpicky.
@@ -49,12 +46,23 @@ html_static_path = ["_static"]
 html_css_files = ["css/tokens.css", "css/theme.css", "css/landing.css"]
 html_js_files = ["js/landing.js"]
 html_favicon = "_static/img/favicon.svg"
-html_logo = "_static/img/logo.svg"
 html_copy_source = False
+
+# Read the Docs exports the canonical URL of the version being built, and a URL
+# hardcoded here would point every version at latest.
+html_baseurl = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
 
 html_theme_options = {
     "accent_color": "teal",
     "color_mode": "auto",
+    # The card GitHub shows for the repository, as an absolute URL a crawler can
+    # fetch. index.rst repeats it in :cover:, which asks for the large preview.
+    "og_image_url": (
+        "https://raw.githubusercontent.com/paqstd-dev/nodrill/main"
+        "/.github/assets/social-preview.png"
+    ),
+    "light_logo": "_static/img/nodrill-wordmark-light.svg",
+    "dark_logo": "_static/img/nodrill-wordmark-dark.svg",
     "dark_code": False,
     "page_layout": "default",
     "github_url": "https://github.com/paqstd-dev/nodrill",

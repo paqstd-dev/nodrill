@@ -1,7 +1,7 @@
 <section class="nd-hero">
   <div class="nd-wrap nd-hero-inner">
     <span class="nd-eyebrow">Scoped context on contextvars</span>
-    <h1 class="nd-hero-title">nodrill</h1>
+    <h1 class="nd-hero-title"><span class="nd-hero-no">no</span>drill</h1>
     <p class="nd-hero-tagline">
       Provide a value once, <span class="nd-grad">use it anywhere below</span>
     </p>
@@ -11,10 +11,10 @@
       <li class="nd-badge">Typed · py.typed</li>
     </ul>
     <p class="nd-hero-sub">
-      A request id or a database handle set at the boundary reaches the code
-      that needs it without every function in between growing a parameter it
-      never reads. Thread-safe and asyncio-task-safe, because it is
-      <code>contextvars</code> underneath.
+      Set the database handle or the request id once, at the boundary, and
+      read it ten frames down. The functions in between keep the signatures
+      they already have, and every lookup stays thread-safe and
+      asyncio-task-safe.
     </p>
     <div class="nd-hero-actions">
       <a class="nd-btn nd-btn-primary" href="{{ pathto('content/intro/index') }}">
@@ -32,21 +32,41 @@
         <span class="nd-copy-done">Copied</span>
       </button>
     </div>
-    <div class="nd-mock">
-      <div class="nd-mock-bar">
-        <span class="nd-mock-dot"></span>
-        <span class="nd-mock-dot"></span>
-        <span class="nd-mock-dot"></span>
-        <span class="nd-mock-title">app.py</span>
+    <div class="nd-mock-pair">
+      <div class="nd-mock">
+        <div class="nd-mock-bar">
+          <span class="nd-mock-dot"></span>
+          <span class="nd-mock-dot"></span>
+          <span class="nd-mock-dot"></span>
+          <span class="nd-mock-title">checkout.py — drilled</span>
+        </div>
+        <pre class="nd-mock-body nd-code"><span class="c-kw">def</span> <span class="c-fn">handle</span>(request, db, tenant):
+    <span class="c-kw">return</span> <span class="c-fn">place_order</span>(request.json, db, tenant)
+
+<span class="c-kw">def</span> <span class="c-fn">place_order</span>(payload, db, tenant):  <span class="c-com"># uses neither</span>
+    <span class="c-kw">return</span> <span class="c-fn">charge</span>(payload, db, tenant)
+
+<span class="c-kw">def</span> <span class="c-fn">charge</span>(payload, db, tenant):
+    db.<span class="c-fn">bill</span>(tenant, payload[<span class="c-str">"total"</span>])</pre>
       </div>
-      <pre class="nd-mock-body nd-code"><span class="c-kw">from</span> nodrill <span class="c-kw">import</span> provider, use
+      <div class="nd-mock">
+        <div class="nd-mock-bar">
+          <span class="nd-mock-dot"></span>
+          <span class="nd-mock-dot"></span>
+          <span class="nd-mock-dot"></span>
+          <span class="nd-mock-title">checkout.py — with nodrill</span>
+        </div>
+        <pre class="nd-mock-body nd-code"><span class="c-kw">def</span> <span class="c-fn">handle</span>(request, db, tenant):
+    <span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-str">"scope"</span>, db=db, tenant=tenant):
+        <span class="c-kw">return</span> <span class="c-fn">place_order</span>(request.json)
 
-<span class="c-kw">def</span> <span class="c-fn">handle_request</span>():
-    <span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-str">"request"</span>, user_id=<span class="c-num">42</span>):
-        <span class="c-fn">render_page</span>()          <span class="c-com"># signature unchanged</span>
+<span class="c-kw">def</span> <span class="c-fn">place_order</span>(payload):       <span class="c-com"># just the payload</span>
+    <span class="c-kw">return</span> <span class="c-fn">charge</span>(payload)
 
-<span class="c-kw">def</span> <span class="c-fn">audit</span>():                 <span class="c-com"># five frames deeper</span>
-    <span class="c-fn">log</span>(<span class="c-fn">use</span>(<span class="c-str">"request"</span>).user_id)</pre>
+<span class="c-kw">def</span> <span class="c-fn">charge</span>(payload):
+    scope = <span class="c-fn">use</span>(<span class="c-str">"scope"</span>)
+    scope.db.<span class="c-fn">bill</span>(scope.tenant, payload[<span class="c-str">"total"</span>])</pre>
+      </div>
     </div>
   </div>
 </section>
