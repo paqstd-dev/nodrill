@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://nodrill.readthedocs.io/
+    about: The tutorial covers the whole library in about ten minutes; start there.
+  - name: How do I ...?
+    url: https://github.com/paqstd-dev/nodrill/discussions
+    about: Usage questions belong in Discussions rather than the issue tracker.

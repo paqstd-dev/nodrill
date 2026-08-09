@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest a change to the API or the documentation
+labels: [enhancement]
+
+body:
+  - type: markdown
+    attributes:
+      value: >
+        nodrill is deliberately small. Please read
+        [what is in scope](https://nodrill.readthedocs.io/en/latest/content/misc/scope.html)
+        first — several obvious-looking features are left out on purpose, and that page says why.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and where does the current API get in the way?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: Sketch how the code would look if this existed. Rough is fine.
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: >
+        A workaround built on the current API, another library, or a plain `contextvars` version.
+        Knowing what almost works is usually the most useful part of the request.

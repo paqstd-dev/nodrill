@@ -1,0 +1,414 @@
+/* nodrill docs — landing page
+   Scoped under .nd-landing so it never touches regular doc pages. The content
+   wrap matches the Shibuya header. */
+
+.nd-landing {
+  width: 100%;
+  overflow-x: clip;
+}
+
+.nd-wrap {
+  max-width: var(--nd-maxw);
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
+.nd-eyebrow {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-11);
+  background-color: var(--accent-a3);
+  border: 1px solid var(--accent-a4);
+  border-radius: 999px;
+  padding: 0.32rem 0.85rem;
+}
+
+.nd-grad {
+  background: linear-gradient(100deg, var(--accent-9), var(--accent-10));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.nd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.7rem 1.4rem;
+  border-radius: var(--nd-radius-sm);
+  border: 1px solid transparent;
+  transition: transform 0.14s ease, box-shadow 0.14s ease,
+    background-color 0.14s ease, border-color 0.14s ease;
+}
+
+.nd-btn:hover {
+  transform: translateY(-2px);
+}
+
+.nd-btn-primary {
+  background-color: var(--accent-9);
+  color: var(--accent-contrast);
+  box-shadow: var(--nd-shadow-sm);
+}
+
+.nd-btn-primary:hover {
+  background-color: var(--accent-10);
+  box-shadow: var(--nd-shadow);
+}
+
+.nd-btn-ghost {
+  background-color: var(--nd-surface-1);
+  color: var(--sy-c-text);
+  border-color: var(--nd-border-strong);
+}
+
+.nd-btn-ghost:hover {
+  border-color: var(--accent-7);
+  color: var(--accent-11);
+}
+
+.nd-section-head {
+  max-width: 56rem;
+  margin-inline: auto;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.nd-section-title {
+  font-size: clamp(1.6rem, 3.6vw, 2.3rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--sy-c-heading);
+  margin: 0 0 0.6rem;
+}
+
+.nd-section-sub {
+  color: var(--sy-c-light);
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.nd-hero {
+  position: relative;
+  text-align: center;
+  padding: clamp(2.5rem, 5vw, 4rem) 0 clamp(2.2rem, 4vw, 3rem);
+}
+
+.nd-hero::before {
+  content: "";
+  position: absolute;
+  inset: -10% 0 auto 0;
+  height: 460px;
+  background: radial-gradient(
+    ellipse 60% 100% at 50% 0%,
+    var(--accent-a4),
+    transparent 70%
+  );
+  z-index: -1;
+  pointer-events: none;
+}
+
+.nd-hero-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
+}
+
+.nd-hero-title {
+  font-size: clamp(3rem, 9vw, 5.5rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--sy-c-heading);
+  margin: 0.2rem 0 0;
+}
+
+.nd-hero-tagline {
+  font-size: clamp(1.2rem, 2.6vw, 1.85rem);
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  color: var(--sy-c-heading);
+  margin: 0;
+}
+
+.nd-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nd-badge {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--sy-c-light);
+  background-color: var(--nd-surface-2);
+  border: 1px solid var(--nd-border);
+  border-radius: 999px;
+  padding: 0.34rem 0.85rem;
+}
+
+.nd-hero-sub {
+  max-width: 52rem;
+  font-size: clamp(1.02rem, 1.6vw, 1.18rem);
+  line-height: 1.6;
+  color: var(--sy-c-light);
+  margin: 0;
+}
+
+.nd-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  justify-content: center;
+}
+
+.nd-install {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  background-color: var(--nd-surface-2);
+  border: 1px solid var(--nd-border);
+  border-radius: var(--nd-radius-sm);
+  font-family: var(--sy-f-mono);
+  font-size: 0.9rem;
+}
+
+.nd-install-prompt {
+  color: var(--accent-9);
+  font-weight: 700;
+}
+
+.nd-install-cmd {
+  color: var(--sy-c-text);
+  background: none;
+  padding: 0;
+}
+
+.nd-copy {
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.32rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--nd-border-strong);
+  background-color: var(--nd-surface-1);
+  color: var(--sy-c-light);
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.nd-copy:hover {
+  color: var(--accent-11);
+  border-color: var(--accent-7);
+}
+
+.nd-copy-done {
+  display: none;
+  color: var(--accent-11);
+}
+
+.nd-install.is-copied .nd-copy-default {
+  display: none;
+}
+
+.nd-install.is-copied .nd-copy-done {
+  display: inline;
+}
+
+.nd-mock {
+  background-color: var(--nd-term-bg);
+  border: 1px solid var(--nd-term-border);
+  border-radius: var(--nd-radius);
+  overflow: hidden;
+  text-align: left;
+}
+
+.nd-mock-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--nd-term-border);
+}
+
+.nd-mock-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+
+.nd-mock-dot:nth-child(1) { background-color: var(--nd-term-dot-red); }
+.nd-mock-dot:nth-child(2) { background-color: var(--nd-term-dot-amber); }
+.nd-mock-dot:nth-child(3) { background-color: var(--nd-term-dot-green); }
+
+.nd-mock-title {
+  margin-left: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--nd-term-muted);
+  font-family: var(--sy-f-mono);
+}
+
+.nd-mock-body {
+  margin: 0;
+  padding: 1.1rem 1.25rem;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-family: var(--sy-f-mono);
+  font-size: 0.82rem;
+  line-height: 1.8;
+  color: var(--nd-term-text);
+  overflow-x: auto;
+}
+
+.nd-code .c-kw { color: var(--nd-syntax-keyword); }
+.nd-code .c-deco { color: var(--nd-syntax-decorator); }
+.nd-code .c-fn { color: var(--nd-syntax-name); }
+.nd-code .c-str { color: var(--nd-syntax-string); }
+.nd-code .c-com { color: var(--nd-term-muted); }
+.nd-code .c-num { color: var(--nd-syntax-number); }
+
+/* the hero code panel sits under the copy rather than beside it */
+.nd-hero .nd-mock {
+  width: min(46rem, 100%);
+  margin-top: 0.6rem;
+}
+
+/* a separate surface zone keeps the walkthrough distinct from the hero */
+.nd-features {
+  padding: clamp(3.5rem, 7vw, 6rem) 0;
+  background-color: var(--nd-surface-2);
+  border-top: 1px solid var(--nd-border);
+}
+
+.nd-features .nd-section-head {
+  margin-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+.nd-feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(3rem, 6.5vw, 5.5rem);
+}
+
+.nd-feature {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: center;
+}
+
+/* even rows flip the code panel to the left */
+.nd-feature:nth-child(even) .nd-feature-text {
+  order: 2;
+}
+
+.nd-feature-kicker {
+  display: inline-block;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent-11);
+}
+
+.nd-feature-title {
+  font-size: clamp(1.45rem, 3vw, 1.9rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--sy-c-heading);
+  margin: 0.5rem 0 0;
+}
+
+.nd-feature-text p {
+  font-size: 1.02rem;
+  line-height: 1.65;
+  color: var(--sy-c-light);
+  margin: 0.7rem 0 0;
+}
+
+.nd-feature-bullets {
+  list-style: none;
+  margin: 1.2rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.nd-feature-bullets li {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--sy-c-light);
+}
+
+.nd-check {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  margin-top: 0.18rem;
+  color: var(--accent-9);
+}
+
+.nd-feature-bullets code,
+.nd-feature-text code {
+  font-family: var(--sy-f-mono);
+  font-size: 0.84em;
+  background-color: var(--nd-surface-3);
+  border-radius: 5px;
+  padding: 0.08em 0.34em;
+  color: var(--accent-11);
+}
+
+.nd-cta {
+  padding: clamp(3rem, 6vw, 5rem) 0;
+  text-align: center;
+}
+
+.nd-cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  justify-content: center;
+  margin-top: 1.6rem;
+}
+
+@media (max-width: 860px) {
+  .nd-feature {
+    grid-template-columns: 1fr;
+    gap: 1.6rem;
+  }
+  .nd-feature:nth-child(even) .nd-feature-text {
+    order: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .nd-install {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nd-btn,
+  .nd-btn:hover {
+    transition: none;
+    transform: none;
+  }
+}

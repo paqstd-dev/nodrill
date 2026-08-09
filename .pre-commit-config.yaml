@@ -1,0 +1,31 @@
+# Optional, and installed by `make install`. The Makefile and CI run the same tools directly,
+# so a contributor who skips pre-commit is not held to a different standard.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.2
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.29.0
+    hooks:
+      - id: zizmor
+
+  # Rule configuration lives in pyproject.toml under [tool.pymarkdown].
+  - repo: https://github.com/jackdewinter/pymarkdown
+    rev: v0.9.39
+    hooks:
+      - id: pymarkdown

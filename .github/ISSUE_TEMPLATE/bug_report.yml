@@ -1,0 +1,57 @@
+name: Bug report
+description: Something does not behave the way the documentation says it does
+labels: [bug]
+
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Initial checks
+      options:
+        - label: I am on the latest version of nodrill.
+          required: true
+        - label: I searched the existing issues and did not find this one.
+          required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: >
+        The smallest complete program that shows the problem. Context bugs are almost always about
+        which context a piece of code ran in, so include where the provider was entered and where
+        the lookup happened.
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: behaviour
+    attributes:
+      label: What happened, and what you expected instead
+      description: Paste the traceback in full if there is one.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: concurrency
+    attributes:
+      label: Concurrency
+      description: Where does the code that fails run?
+      options:
+        - Single-threaded, no asyncio
+        - Threads
+        - asyncio
+        - Both threads and asyncio
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `python -c "import sys, nodrill; print(nodrill.__version__, sys.version)"`
+      placeholder: 0.1.0 3.13.1 (main, ...) [Clang 17.0.0]
+    validations:
+      required: true

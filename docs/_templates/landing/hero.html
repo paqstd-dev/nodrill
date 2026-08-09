@@ -1,0 +1,52 @@
+<section class="nd-hero">
+  <div class="nd-wrap nd-hero-inner">
+    <span class="nd-eyebrow">Scoped context on contextvars</span>
+    <h1 class="nd-hero-title">nodrill</h1>
+    <p class="nd-hero-tagline">
+      Provide a value once, <span class="nd-grad">use it anywhere below</span>
+    </p>
+    <ul class="nd-badges">
+      <li class="nd-badge">Python 3.10–3.14</li>
+      <li class="nd-badge">Zero dependencies</li>
+      <li class="nd-badge">Typed · py.typed</li>
+    </ul>
+    <p class="nd-hero-sub">
+      A request id or a database handle set at the boundary reaches the code
+      that needs it without every function in between growing a parameter it
+      never reads. Thread-safe and asyncio-task-safe, because it is
+      <code>contextvars</code> underneath.
+    </p>
+    <div class="nd-hero-actions">
+      <a class="nd-btn nd-btn-primary" href="{{ pathto('content/intro/index') }}">
+        Get started
+      </a>
+      <a class="nd-btn nd-btn-ghost" href="https://github.com/paqstd-dev/nodrill">
+        View on GitHub
+      </a>
+    </div>
+    <div class="nd-install" data-copy="pip install nodrill">
+      <span class="nd-install-prompt">$</span>
+      <code class="nd-install-cmd">pip install nodrill</code>
+      <button class="nd-copy" type="button" aria-label="Copy install command">
+        <span class="nd-copy-default">Copy</span>
+        <span class="nd-copy-done">Copied</span>
+      </button>
+    </div>
+    <div class="nd-mock">
+      <div class="nd-mock-bar">
+        <span class="nd-mock-dot"></span>
+        <span class="nd-mock-dot"></span>
+        <span class="nd-mock-dot"></span>
+        <span class="nd-mock-title">app.py</span>
+      </div>
+      <pre class="nd-mock-body nd-code"><span class="c-kw">from</span> nodrill <span class="c-kw">import</span> provider, use
+
+<span class="c-kw">def</span> <span class="c-fn">handle_request</span>():
+    <span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-str">"request"</span>, user_id=<span class="c-num">42</span>):
+        <span class="c-fn">render_page</span>()          <span class="c-com"># signature unchanged</span>
+
+<span class="c-kw">def</span> <span class="c-fn">audit</span>():                 <span class="c-com"># five frames deeper</span>
+    <span class="c-fn">log</span>(<span class="c-fn">use</span>(<span class="c-str">"request"</span>).user_id)</pre>
+    </div>
+  </div>
+</section>

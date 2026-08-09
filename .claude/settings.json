@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(make:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv lock:*)",
+      "Bash(uv build:*)",
+      "Bash(uv tree:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run mypy:*)",
+      "Bash(uv run pyright:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(uv run coverage:*)",
+      "Bash(uv run sphinx-build:*)",
+      "Bash(uv run --group:*)",
+      "Bash(uv run --no-sync:*)",
+      "Bash(uvx zizmor:*)",
+      "Bash(uvx twine check:*)",
+      "Bash(uvx pre-commit:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git blame:*)",
+      "Bash(git ls-files:*)"
+    ],
+    "deny": [
+      "Bash(uv publish:*)",
+      "Bash(twine upload:*)",
+      "Bash(uvx twine upload:*)",
+      "Edit(./uv.lock)",
+      "Write(./uv.lock)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; case \"$f\" in *.py) uv run --no-sync ruff format \"$f\" && uv run --no-sync ruff check --select I --fix-only \"$f\";; esac; } 2>/dev/null || true",
+            "statusMessage": "Formatting with ruff"
+          }
+        ]
+      }
+    ]
+  }
+}

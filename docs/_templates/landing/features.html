@@ -1,0 +1,132 @@
+{%- macro check() -%}
+<svg class="nd-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>
+{%- endmacro -%}
+{%- macro mockbar(title) -%}
+<div class="nd-mock-bar">
+  <span class="nd-mock-dot"></span>
+  <span class="nd-mock-dot"></span>
+  <span class="nd-mock-dot"></span>
+  <span class="nd-mock-title">{{ title }}</span>
+</div>
+{%- endmacro -%}
+<section class="nd-features">
+  <div class="nd-wrap">
+    <div class="nd-section-head">
+      <h2 class="nd-section-title">What the library gives you</h2>
+      <p class="nd-section-sub">
+        Four pieces, each one a thin layer over the standard library.
+      </p>
+    </div>
+
+    <div class="nd-feature-list">
+
+      <article class="nd-feature">
+        <div class="nd-feature-text">
+          <span class="nd-feature-kicker">Typed lookups</span>
+          <h3 class="nd-feature-title">Classes are the keys</h3>
+          <p>
+            Provide an instance and it registers under its own class. Look it
+            up by that class and the static type survives, under mypy and
+            pyright alike.
+          </p>
+          <ul class="nd-feature-bullets">
+            <li>{{ check() }} <code>use(Config)</code> is inferred as <code>Config</code></li>
+            <li>{{ check() }} Nested providers shadow, then restore on exit</li>
+            <li>{{ check() }} A miss falls back to <code>set_default</code>, then <code>default=</code></li>
+          </ul>
+        </div>
+        <div class="nd-mock">
+          {{ mockbar("config.py") }}
+          <pre class="nd-mock-body nd-code"><span class="c-deco">@dataclass</span>
+<span class="c-kw">class</span> <span class="c-fn">Config</span>:
+    url: <span class="c-kw">str</span> = <span class="c-str">"sqlite://"</span>
+
+<span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-fn">Config</span>(url=<span class="c-str">"postgres://prod"</span>)):
+    <span class="c-fn">handler</span>()
+
+<span class="c-kw">def</span> <span class="c-fn">handler</span>() -> <span class="c-kw">None</span>:
+    cfg = <span class="c-fn">use</span>(Config)     <span class="c-com"># -> Config</span>
+    <span class="c-fn">print</span>(cfg.url)</pre>
+        </div>
+      </article>
+
+      <article class="nd-feature">
+        <div class="nd-feature-text">
+          <span class="nd-feature-kicker">Injection</span>
+          <h3 class="nd-feature-title">Parameters that fill themselves</h3>
+          <p>
+            Annotate a parameter and <code>@inject</code> resolves it from the
+            active context at call time. An argument you pass explicitly always
+            wins, so tests need no providers at all.
+          </p>
+          <ul class="nd-feature-bullets">
+            <li>{{ check() }} The plan is built once, at decoration time</li>
+            <li>{{ check() }} Works on <code>async def</code>, methods, classmethods</li>
+            <li>{{ check() }} Generators are rejected instead of going stale</li>
+          </ul>
+        </div>
+        <div class="nd-mock">
+          {{ mockbar("report.py") }}
+          <pre class="nd-mock-body nd-code"><span class="c-deco">@inject</span>
+<span class="c-kw">def</span> <span class="c-fn">report</span>(cfg: FromCtx[Config] = injected):
+    <span class="c-kw">return</span> cfg.url
+
+<span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-fn">Config</span>()):
+    <span class="c-fn">report</span>()                    <span class="c-com"># injected</span>
+
+<span class="c-fn">report</span>(<span class="c-fn">Config</span>(url=<span class="c-str">"sqlite://"</span>))  <span class="c-com"># explicit</span></pre>
+        </div>
+      </article>
+
+      <article class="nd-feature">
+        <div class="nd-feature-text">
+          <span class="nd-feature-kicker">Concurrency</span>
+          <h3 class="nd-feature-title">Across tasks and threads</h3>
+          <p>
+            asyncio inherits the context on its own. Plain threads do not, so
+            two helpers close the gap: one binds a callable to a snapshot, the
+            other is a pool whose workers see the submit-time context.
+          </p>
+          <ul class="nd-feature-bullets">
+            <li>{{ check() }} Sibling tasks stay isolated from each other</li>
+            <li>{{ check() }} <code>Executor</code> is a <code>ThreadPoolExecutor</code> subclass</li>
+            <li>{{ check() }} Worker writes never leak back to the submitter</li>
+          </ul>
+        </div>
+        <div class="nd-mock">
+          {{ mockbar("jobs.py") }}
+          <pre class="nd-mock-body nd-code"><span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-fn">Config</span>()):
+    <span class="c-fn">Thread</span>(target=<span class="c-fn">wrap</span>(job)).<span class="c-fn">start</span>()
+
+    <span class="c-kw">with</span> <span class="c-fn">Executor</span>(max_workers=<span class="c-num">4</span>) <span class="c-kw">as</span> pool:
+        pool.<span class="c-fn">submit</span>(job)   <span class="c-com"># sees Config</span></pre>
+        </div>
+      </article>
+
+      <article class="nd-feature">
+        <div class="nd-feature-text">
+          <span class="nd-feature-kicker">Errors</span>
+          <h3 class="nd-feature-title">Misses that explain themselves</h3>
+          <p>
+            A missing provider names what was asked for, lists what is active,
+            suggests the close match, and points at the line you forgot to
+            write.
+          </p>
+          <ul class="nd-feature-bullets">
+            <li>{{ check() }} <code>NoProviderError</code> subclasses <code>LookupError</code></li>
+            <li>{{ check() }} The key and the active keys are attributes</li>
+            <li>{{ check() }} <code>frozen=True</code> turns callee writes into errors</li>
+          </ul>
+        </div>
+        <div class="nd-mock">
+          {{ mockbar("traceback") }}
+          <pre class="nd-mock-body nd-code"><span class="c-kw">NoProviderError</span>: <span class="c-fn">use</span>(<span class="c-str">'datbase'</span>): no active
+provider for <span class="c-str">'datbase'</span>. Active providers:
+<span class="c-str">'cache'</span>, <span class="c-str">'database'</span>. Did you mean <span class="c-str">'database'</span>?
+Hint: did you forget <span class="c-str">`with provider('datbase')`</span>?</pre>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>

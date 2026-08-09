@@ -1,0 +1,184 @@
+[build-system]
+# 1.27 is the first release that emits core metadata 2.4: below it the PEP 639
+# `license`/`license-files` pair below is silently dropped from the built metadata.
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nodrill"
+dynamic = ["version"]
+description = "Scoped context for Python call trees. Provide a value once, use it anywhere below"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Pavel Kutsenko" }]
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["context", "contextvars", "dependency-injection", "di", "scope", "provider"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/paqstd-dev/nodrill"
+Documentation = "https://nodrill.readthedocs.io/"
+Source = "https://github.com/paqstd-dev/nodrill"
+Issues = "https://github.com/paqstd-dev/nodrill/issues"
+Changelog = "https://github.com/paqstd-dev/nodrill/releases"
+
+[dependency-groups]
+dev = [
+  "pytest>=9.0",
+  "pytest-asyncio>=1.4",
+  "pytest-randomly>=4.0",
+  "pytest-timeout>=2.4",
+  "mypy>=2.0",
+  "ruff>=0.16",
+  "coverage[toml]>=7.10",
+  "pyright>=1.1.400",
+]
+docs = [
+  "sphinx>=8.1",
+  "shibuya>=2025.1",
+  "sphinx-copybutton>=0.5.2",
+  "sphinx-design>=0.6",
+]
+
+[tool.hatch.version]
+path = "src/nodrill/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md"]
+
+# Spelled out rather than left to hatchling's src-layout detection, so the wheel
+# ships exactly one package no matter what else lands under src/.
+[tool.hatch.build.targets.wheel]
+packages = ["src/nodrill"]
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--import-mode=importlib"]
+strict = true
+empty_parameter_set_mark = "fail_at_collect"
+filterwarnings = ["error"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+timeout = 30
+timeout_method = "thread"
+
+[tool.coverage.run]
+source = ["nodrill"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 100
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "@overload",
+  "\\.\\.\\.",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src", "tests"]
+warn_unreachable = true
+enable_error_code = [
+  "ignore-without-code",
+  "redundant-expr",
+  "truthy-iterable",
+  "truthy-bool",
+  "possibly-undefined",
+  "mutable-override",
+  "unused-awaitable",
+  "unimported-reveal",
+  "deprecated",
+]
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+
+[tool.ruff]
+line-length = 100
+# No target-version: ruff reads it from requires-python, so the supported floor
+# is stated once and cannot drift.
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  # Formatter-owned rules (per the ruff formatter docs).
+  "W191",
+  "E111", "E114", "E117",
+  "D206", "D300",
+  "Q000", "Q001", "Q002", "Q003", "Q004",
+  "COM812", "COM819",
+  "ISC002",
+  # Any at the API edge is the domain: context payloads are dynamic.
+  "ANN401",
+  # Typing imports must stay real: get_type_hints() resolves the public API
+  # at runtime, and TYPE_CHECKING guards would break it.
+  "TC001", "TC002", "TC003",
+  # No per-file copyright headers; the MIT LICENSE sits at the repo root.
+  "CPY001",
+  # False positives on summaries naming the function (wrap(), use()).
+  "D402",
+  # Long messages at raise sites are a feature here: hints and suggestions.
+  "TRY003", "EM101", "EM102",
+  # Internal plan/provider objects carry their state as parameters.
+  "PLR0913", "PLR0917",
+  # Plain TODOs allowed; FIXME/XXX/HACK still flagged via FIX001/003/004.
+  "FIX002", "TD002", "TD003",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  "S101",             # pytest asserts
+  "D1", "D401",       # test names are the documentation
+  "PLR2004",          # literal expected values in asserts
+  "ARG001", "ARG002", # negative tests keep required-but-unused params
+  "BLE001",           # thread harnesses ferry exceptions to the main thread
+  # Nested with and multi-statement raises blocks mirror the provider
+  # semantics under test.
+  "SIM117", "PT012",
+  "INP001",
+]
+# Sphinx owns the module shape: settings are module-level assignments, and
+# `copyright` shadows the builtin by convention.
+"docs/conf.py" = ["A001", "INP001"]
+# A standalone script rather than an importable package.
+"benchmarks/**" = ["INP001"]
+
+[tool.pymarkdown]
+# Prose is one sentence per line, however long the sentence runs, so there is no
+# column to check. Nothing off the shelf verifies the sentence rule itself; it is
+# a review rule. Everything else pymarkdown checks still applies.
+plugins.md013.enabled = false
+# Rule files and slash commands open with YAML front matter, which is markup for
+# Claude Code rather than prose. Without this it parses as a list and a heading.
+extensions.front-matter.enabled = true
+# A slash command and a pull request template are prompts, not documents; neither
+# has a reason to open with an H1.
+plugins.md041.enabled = false
