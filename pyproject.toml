@@ -1,7 +1,7 @@
 [build-system]
 # 1.27 is the first release that emits core metadata 2.4: below it the PEP 639
 # `license`/`license-files` pair below is silently dropped from the built metadata.
-requires = ["hatchling>=1.27"]
+requires = ["hatchling>=1.31.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -45,7 +45,7 @@ dev = [
   "pytest-timeout>=2.4",
   "mypy>=2.0",
   "ruff>=0.16",
-  "coverage[toml]>=7.10",
+  "coverage[toml]>=7.15.2",
   "pyright>=1.1.400",
 ]
 docs = [
