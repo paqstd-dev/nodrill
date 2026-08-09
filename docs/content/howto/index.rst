@@ -14,6 +14,7 @@ Each one is a complete program you can paste into a file and run, with the reaso
    fan-out-with-asyncio
    run-work-in-threads
    test-injected-code
+   refer-to-a-key-you-cannot-import
    replace-a-contextvar
 
 .. rubric:: See also

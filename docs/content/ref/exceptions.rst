@@ -5,7 +5,7 @@ Exceptions
 
 .. currentmodule:: nodrill
 
-Both exceptions subclass a builtin, so existing ``except`` clauses keep working.
+Every exception subclasses a builtin, so existing ``except`` clauses keep working.
 
 NoProviderError
 ---------------
@@ -34,6 +34,43 @@ NoProviderError
       Hint: did you forget `with provider('datbase')`?
 
    Because it subclasses :exc:`LookupError`, ``except LookupError`` catches it alongside :exc:`KeyError` and :exc:`IndexError`.
+
+KeyResolutionError
+------------------
+
+.. exception:: KeyResolutionError
+
+   Bases: :exc:`LookupError`
+
+   Raised when a key built with :func:`ref` cannot be resolved to what its path names.
+
+   .. attribute:: path
+
+      The import path the ref was created with, exactly as written.
+
+   Resolution happens the first time the ref is used as a key, so this is raised out of :func:`use`, :func:`provider`, :func:`set_default` or :func:`resolve_refs` rather than out of :func:`ref` itself.
+   The underlying :exc:`ImportError`, where there is one, is the exception's ``__cause__``.
+
+   Three things go wrong, and each says which:
+
+   .. code-block:: text
+
+      KeyResolutionError: ref('myapp.contxt:RequestScope'): cannot import 'myapp.contxt':
+      No module named 'myapp.contxt'
+
+      KeyResolutionError: ref('myapp.context:RequestScope'): 'myapp.context' has no
+      attribute 'RequestScope'
+
+      KeyResolutionError: ref('myapp.context:RequestScope'): 'myapp.context' is still
+      executing its own import, so 'RequestScope' does not exist yet. The lookup ran
+      during that import: move it inside a function, so it runs once the module is loaded
+
+   The third is the one worth recognising: the lookup ran at module scope inside an import cycle, which is the one place a ref cannot help, because the name genuinely does not exist yet.
+   See :ref:`howto-refer-to-a-key-you-cannot-import`.
+
+   A failure is not cached, so the same ref resolves normally once the import that was in flight completes.
+
+   It subclasses :exc:`LookupError` alongside :exc:`NoProviderError`, so ``except LookupError`` still catches everything a lookup can raise.
 
 FrozenContextError
 ------------------

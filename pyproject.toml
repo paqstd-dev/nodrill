@@ -109,7 +109,10 @@ enable_error_code = [
 ]
 
 [tool.pyright]
-include = ["src"]
+# tests/cycle is the TYPE_CHECKING recipe for a late-bound key, and the two
+# checkers disagreeing about such a shape is why this project has the shapes it
+# has, so that one directory is checked by both.
+include = ["src", "tests/cycle"]
 pythonVersion = "3.10"
 typeCheckingMode = "standard"
 

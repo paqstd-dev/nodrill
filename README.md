@@ -52,8 +52,9 @@ with provider("app", db=engine) as ctx:
 - `frozen=True` hands consumers a read-only view while the block keeps a writable object.
 - `extend=True` for a scope that accumulates as the call descends, one layer per `with` block, each unwound on exit.
 - `lazy(Cls, factory)` for a value that costs something to build and only some requests read.
+- `ref("myapp.context:RequestScope")` for a key that lives in a module you cannot import, because it imports yours.
 - `isolate()` to give a test fresh context state and roll everything back after it.
-- No dependencies, Python 3.10 and up, and a public API of sixteen names.
+- No dependencies, Python 3.10 and up, and a public API of nineteen names.
 
 ## Cost
 
@@ -65,17 +66,18 @@ The first five rows are one function doing one read, reached five ways, so they 
 | operation                                                        |   ns |   × |
 | ---------------------------------------------------------------- | ---: | --: |
 | one read in a function, value passed in as a parameter           |   23 | 1.0 |
-| the same read through `use()`                                    |   60 | 2.7 |
-| the same read through `@inject`                                  |   71 | 3.1 |
-| the same read through a `frozen=True` provider                   |  117 | 5.2 |
-| the same read through a resolved `lazy` provider                 |  138 | 6.1 |
-| `use(Config)` on its own, without the call frame                 |   44 | 2.0 |
+| the same read through `use()`                                    |   64 | 2.8 |
+| the same read through `@inject`                                  |   72 | 3.1 |
+| the same read through a `frozen=True` provider                   |  120 | 5.3 |
+| the same read through a resolved `lazy` provider                 |  144 | 6.3 |
+| `use(Config)` on its own, without the call frame                 |   45 | 2.0 |
+| the same lookup through a `ref()` key                            |  143 | 6.3 |
 | bare `ContextVar.get()`, for reference                           |   16 | 0.7 |
-| `with provider(...)`, enter and exit                             |  544 |  24 |
-| the same with 8 providers already open                           |  626 |  28 |
-| `with provider(lazy(...))`, entered and exited unread            | 1492 |  66 |
-| `with provider(..., extend=True)`, over an 8-attribute namespace | 1697 |  75 |
-| `wrap(fn)()`, per call into a thread                             |  537 |  24 |
+| `with provider(...)`, enter and exit                             |  563 |  25 |
+| the same with 8 providers already open                           |  652 |  28 |
+| `with provider(lazy(...))`, entered and exited unread            | 1536 |  67 |
+| `with provider(..., extend=True)`, over an 8-attribute namespace | 1706 |  74 |
+| `wrap(fn)()`, per call into a thread                             |  536 |  23 |
 
 CPython 3.14.5, arm64.
 
@@ -83,6 +85,7 @@ CPython 3.14.5, arm64.
 
 The `×` column is against handing the value in as a parameter, which is the alternative nodrill removes from the signatures in between.
 Reading through `use()` costs a little over the parameter it replaces; `@inject` costs more, because it fills the argument before the body runs; `frozen=True` and `lazy` add a proxy hop to every attribute the consumer touches.
+A `ref()` key pays for a Python-level hash and one equality check where a class hashes in C, on the lookups that go through a ref and on no others.
 A request that reads a provided value a hundred times spends microseconds in nodrill, against hundreds of microseconds for one round trip to a database.
 
 Entering a provider is the expensive end, because it copies the registry so that sibling tasks stay isolated.
