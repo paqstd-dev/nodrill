@@ -1,0 +1,42 @@
+<section class="nd-scope">
+  <div class="nd-wrap">
+    <div class="nd-section-head">
+      <h2 class="nd-section-title">Not a container, not a global</h2>
+      <p class="nd-section-sub">
+        It carries a value you already made down the stack, and does nothing else.
+      </p>
+    </div>
+
+    <div class="nd-scope-grid">
+      <div class="nd-scope-item">
+        <h3>Nothing is constructed</h3>
+        <p>
+          No dependency graph, no lifetimes, no cache.
+          <code>use()</code> returns exactly what a provider upstream put
+          there, and the lookup is one dict read rather than a graph walk.
+        </p>
+      </div>
+      <div class="nd-scope-item">
+        <h3>Nothing outlives its block</h3>
+        <p>
+          Values live in <code>contextvars</code>, scoped to the
+          <code>with</code> that set them and restored on the way out, even
+          when the block raises. One request cannot read what the last one left.
+        </p>
+      </div>
+      <div class="nd-scope-item">
+        <h3>It composes with what you have</h3>
+        <p>
+          Let dishka or your own factories build things, and FastAPI's
+          <code>Depends</code> own the endpoint edge. nodrill carries the
+          per-request scope past the layers neither of them reaches.
+        </p>
+      </div>
+    </div>
+
+    <p class="nd-scope-more">
+      The whole boundary, down to what is deliberately left out, is written up
+      under <a href="{{ pathto('content/misc/scope') }}">what nodrill is for</a>.
+    </p>
+  </div>
+</section>

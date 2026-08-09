@@ -1,4 +1,4 @@
-# nodrill
+![nodrill](https://raw.githubusercontent.com/paqstd-dev/nodrill/main/docs/_static/img/nodrill-wordmark.svg)
 
 [![PyPI version](https://img.shields.io/pypi/v/nodrill)](https://pypi.org/project/nodrill/)
 [![PyPI Supported Python Versions](https://img.shields.io/pypi/pyversions/nodrill.svg)](https://pypi.org/project/nodrill/)

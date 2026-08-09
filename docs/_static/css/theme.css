@@ -1,10 +1,11 @@
 /* nodrill docs — doc-page restyle
-   Layered over Shibuya. Only surfaces, spacing, and components are refined;
-   colour and typography come from the theme itself. */
+   Layered over Shibuya. Tokens (tokens.css) already retarget colour and
+   typography, so this file only refines surfaces, spacing, and components. */
 
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv05", "cv11", "ss03";
 }
 
 .yue {
@@ -50,8 +51,10 @@ body {
   background-color: color-mix(in srgb, var(--sy-c-background) 82%, transparent);
 }
 
+/* the wordmark is lowercase with ascenders, so it needs less height than a
+   cap-height mark to sit level with the nav beside it */
 .sy-head-brand img {
-  height: 20px;
+  height: 17px;
   width: auto;
 }
 
@@ -121,13 +124,11 @@ div[class*="highlight-"] {
 }
 
 .highlight,
-.highlight pre,
-pre.literal-block {
+.highlight pre {
   border: 0;
 }
 
-.highlight pre,
-pre.literal-block {
+.highlight pre {
   border-radius: 0;
   padding: 1rem 1.15rem;
   font-size: 0.875rem;
@@ -199,21 +200,6 @@ div[class*="highlight-"]:hover .copybtn {
   border-top-right-radius: var(--nd-radius);
 }
 
-.sd-card {
-  border-radius: var(--nd-radius-lg) !important;
-  border: 1px solid var(--nd-border) !important;
-  background-color: var(--nd-surface-1) !important;
-  box-shadow: var(--nd-shadow-sm);
-  overflow: hidden;
-  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
-}
-
-.sd-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--accent-7) !important;
-  box-shadow: var(--nd-shadow);
-}
-
 .yue table {
   border-radius: var(--nd-radius);
   overflow: hidden;
@@ -229,23 +215,29 @@ div[class*="highlight-"]:hover .copybtn {
   color: var(--sy-c-light);
 }
 
-.sy-searchbox input,
-.sy-searchbox button {
+.searchbox input,
+.searchbox button {
   border-radius: var(--nd-radius-sm);
+}
+
+.body.sy-container main.sy-content {
+  padding-left: 20px;
+  padding-right: 20px;
 }
 
 /* the .. contents:: directive, rendered as a bordered surface card so it reads
    like the landing's blocks rather than a loose bullet list */
-.yue nav.contents,
-.yue div.contents.topic {
+.yue nav.contents {
+  /* the theme's own `contents` utility sets display to contents, which the
+     docutils class name of the same spelling picks up */
+  display: block;
   background-color: var(--nd-surface-2);
   border: 1px solid var(--nd-border);
   border-radius: var(--nd-radius);
   padding: 1.1rem 1.35rem;
 }
 
-.yue nav.contents > .topic-title,
-.yue div.contents.topic > .topic-title {
+.yue nav.contents > .topic-title {
   font-size: 0.76rem;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -254,9 +246,26 @@ div[class*="highlight-"]:hover .copybtn {
   margin: 0 0 0.55rem;
 }
 
-.yue nav.contents ul,
-.yue div.contents.topic ul {
+.yue nav.contents ul {
   margin: 0;
+}
+
+/* every entry is a paragraph, and prose margins would space it like body copy */
+.yue nav.contents li {
+  margin: 0.1rem 0;
+}
+
+.yue nav.contents li > p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* below this the theme's page TOC is off-canvas behind a toggle, and the
+   directive is the only navigation the page has */
+@media (min-width: 1280px) {
+  .yue nav.contents {
+    display: none;
+  }
 }
 
 /* the .. rubric:: directive used on section index pages */
@@ -271,17 +280,10 @@ div[class*="highlight-"]:hover .copybtn {
   margin-top: 2.4rem;
 }
 
-/* API entries — a left rule ties the signature to its prose */
+/* API entries — a left rule ties the signature to its prose. Shibuya hangs the
+   first line of a signature with text-indent, which is measured from the left
+   padding, so the padding has to stay where the theme put it. */
 .yue dl.py > dt {
   border-left: 3px solid var(--accent-a6);
-  padding-left: 0.7rem;
   background: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sd-card,
-  .sd-card:hover {
-    transition: none;
-    transform: none;
-  }
 }

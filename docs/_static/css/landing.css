@@ -120,13 +120,20 @@
   gap: 1.1rem;
 }
 
+/* the title is the header wordmark at display size, so it carries the same
+   weight and colour split rather than a second treatment of the same name */
 .nd-hero-title {
   font-size: clamp(3rem, 9vw, 5.5rem);
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1;
   color: var(--sy-c-heading);
   margin: 0.2rem 0 0;
+}
+
+.nd-hero-no {
+  font-weight: 500;
+  color: var(--accent-9);
 }
 
 .nd-hero-tagline {
@@ -281,10 +288,67 @@
 .nd-code .c-com { color: var(--nd-term-muted); }
 .nd-code .c-num { color: var(--nd-syntax-number); }
 
-/* the hero code panel sits under the copy rather than beside it */
-.nd-hero .nd-mock {
-  width: min(46rem, 100%);
-  margin-top: 0.6rem;
+/* the hero pitch is a before/after pair, so the panels share one row */
+.nd-mock-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  gap: 1rem;
+  width: min(70rem, 100%);
+  margin-top: 0.8rem;
+}
+
+.nd-mock-pair .nd-mock-body {
+  font-size: 0.78rem;
+}
+
+/* the "not a container" band, between the hero and the walkthrough */
+.nd-scope {
+  padding: clamp(3rem, 6vw, 4.5rem) 0 clamp(1rem, 2vw, 2rem);
+}
+
+.nd-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: clamp(1.6rem, 3.5vw, 3rem);
+  margin-top: clamp(1.6rem, 3vw, 2.4rem);
+}
+
+.nd-scope-item h3 {
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--sy-c-heading);
+  margin: 0;
+  padding-top: 0.9rem;
+  border-top: 2px solid var(--accent-a6);
+}
+
+.nd-scope-item p {
+  font-size: 0.98rem;
+  line-height: 1.65;
+  color: var(--sy-c-light);
+  margin: 0.55rem 0 0;
+}
+
+.nd-scope-more {
+  text-align: center;
+  color: var(--sy-c-light);
+  font-size: 1rem;
+  margin: clamp(1.8rem, 3.5vw, 2.6rem) 0 0;
+}
+
+/* the theme leaves body links at text colour, which reads as prose here */
+.nd-scope-more a {
+  color: var(--accent-11);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+.nd-scope-more a:hover {
+  text-decoration-color: var(--accent-9);
 }
 
 /* a separate surface zone keeps the walkthrough distinct from the hero */
@@ -292,6 +356,7 @@
   padding: clamp(3.5rem, 7vw, 6rem) 0;
   background-color: var(--nd-surface-2);
   border-top: 1px solid var(--nd-border);
+  border-bottom: 1px solid var(--nd-border);
 }
 
 .nd-features .nd-section-head {
@@ -302,6 +367,45 @@
   display: flex;
   flex-direction: column;
   gap: clamp(3rem, 6.5vw, 5.5rem);
+}
+
+.nd-rest {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+}
+
+.nd-rest-card {
+  background-color: var(--nd-surface-1);
+  border: 1px solid var(--nd-border);
+  border-radius: var(--nd-radius);
+  padding: 1.15rem 1.25rem 1.3rem;
+}
+
+.nd-rest-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--sy-c-heading);
+  margin: 0 0 0.5rem;
+}
+
+.nd-rest-card p {
+  font-size: 0.93rem;
+  line-height: 1.6;
+  color: var(--sy-c-light);
+  margin: 0;
+}
+
+.nd-rest-card p.nd-rest-code {
+  font-family: var(--sy-f-mono);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--nd-term-muted);
+  background-color: var(--nd-surface-3);
+  border-radius: var(--nd-radius-sm);
+  padding: 0.6rem 0.7rem;
+  margin-top: 0.75rem;
 }
 
 .nd-feature {
@@ -366,7 +470,9 @@
 }
 
 .nd-feature-bullets code,
-.nd-feature-text code {
+.nd-feature-text code,
+.nd-scope-item code,
+.nd-rest-card code {
   font-family: var(--sy-f-mono);
   font-size: 0.84em;
   background-color: var(--nd-surface-3);
@@ -395,6 +501,9 @@
   }
   .nd-feature:nth-child(even) .nd-feature-text {
     order: 0;
+  }
+  .nd-mock-pair {
+    grid-template-columns: 1fr;
   }
 }
 

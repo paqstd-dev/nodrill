@@ -1,5 +1,6 @@
 :layout: landing
 :description: nodrill gives a Python call tree a shared, scoped context. Provide a value once, use it anywhere below, without threading it through the signatures in between.
+:cover: https://raw.githubusercontent.com/paqstd-dev/nodrill/main/.github/assets/social-preview.png
 
 nodrill
 =======

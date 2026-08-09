@@ -25,108 +25,156 @@
           <span class="nd-feature-kicker">Typed lookups</span>
           <h3 class="nd-feature-title">Classes are the keys</h3>
           <p>
-            Provide an instance and it registers under its own class. Look it
-            up by that class and the static type survives, under mypy and
-            pyright alike.
+            A string namespace is quick to write; a class is the one your
+            editor completes. Provide an instance and it registers under its
+            own class, so the lookup below hands it back with the static type
+            intact, under mypy and pyright alike.
           </p>
           <ul class="nd-feature-bullets">
-            <li>{{ check() }} <code>use(Config)</code> is inferred as <code>Config</code></li>
-            <li>{{ check() }} Nested providers shadow, then restore on exit</li>
-            <li>{{ check() }} A miss falls back to <code>set_default</code>, then <code>default=</code></li>
+            <li>{{ check() }} <code>use(Scope)</code> is inferred as <code>Scope</code>, not <code>Any</code></li>
+            <li>{{ check() }} An inner block overrides one tenant, the outer scope returns on exit</li>
+            <li>{{ check() }} A miss tries <code>set_default</code>, then <code>default=</code>, then raises</li>
           </ul>
         </div>
         <div class="nd-mock">
-          {{ mockbar("config.py") }}
+          {{ mockbar("scope.py") }}
           <pre class="nd-mock-body nd-code"><span class="c-deco">@dataclass</span>
-<span class="c-kw">class</span> <span class="c-fn">Config</span>:
-    url: <span class="c-kw">str</span> = <span class="c-str">"sqlite://"</span>
+<span class="c-kw">class</span> <span class="c-fn">Scope</span>:
+    db: Session
+    tenant: <span class="c-kw">str</span>
 
-<span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-fn">Config</span>(url=<span class="c-str">"postgres://prod"</span>)):
-    <span class="c-fn">handler</span>()
+<span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-fn">Scope</span>(db=session, tenant=<span class="c-str">"acme"</span>)):
+    <span class="c-fn">place_order</span>(payload)
 
-<span class="c-kw">def</span> <span class="c-fn">handler</span>() -> <span class="c-kw">None</span>:
-    cfg = <span class="c-fn">use</span>(Config)     <span class="c-com"># -> Config</span>
-    <span class="c-fn">print</span>(cfg.url)</pre>
+<span class="c-kw">def</span> <span class="c-fn">charge</span>(total: <span class="c-kw">int</span>) -> <span class="c-kw">None</span>:
+    scope = <span class="c-fn">use</span>(Scope)          <span class="c-com"># -> Scope</span>
+    scope.db.<span class="c-fn">bill</span>(scope.tenant, total)</pre>
         </div>
       </article>
 
       <article class="nd-feature">
         <div class="nd-feature-text">
           <span class="nd-feature-kicker">Injection</span>
-          <h3 class="nd-feature-title">Parameters that fill themselves</h3>
+          <h3 class="nd-feature-title">Keep the dependency in the signature</h3>
           <p>
-            Annotate a parameter and <code>@inject</code> resolves it from the
-            active context at call time. An argument you pass explicitly always
-            wins, so tests need no providers at all.
+            When a function should say out loud what it needs, annotate the
+            parameter and <code>@inject</code> fills it from the active context
+            at call time. An argument you pass explicitly always wins, which is
+            what makes the test on the last line a one-liner.
           </p>
           <ul class="nd-feature-bullets">
-            <li>{{ check() }} The plan is built once, at decoration time</li>
-            <li>{{ check() }} Works on <code>async def</code>, methods, classmethods</li>
-            <li>{{ check() }} Generators are rejected instead of going stale</li>
+            <li>{{ check() }} Explicit arguments win, so tests need no providers</li>
+            <li>{{ check() }} The wrapper compiles once, at decoration, mirroring your signature</li>
+            <li>{{ check() }} Works on <code>async def</code>, methods and classmethods</li>
           </ul>
         </div>
         <div class="nd-mock">
-          {{ mockbar("report.py") }}
+          {{ mockbar("billing.py") }}
           <pre class="nd-mock-body nd-code"><span class="c-deco">@inject</span>
-<span class="c-kw">def</span> <span class="c-fn">report</span>(cfg: FromCtx[Config] = injected):
-    <span class="c-kw">return</span> cfg.url
+<span class="c-kw">def</span> <span class="c-fn">refund</span>(order, gw: FromCtx[Gateway] = injected) -> <span class="c-kw">None</span>:
+    gw.<span class="c-fn">credit</span>(order.id, order.total)
 
-<span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-fn">Config</span>()):
-    <span class="c-fn">report</span>()                    <span class="c-com"># injected</span>
+<span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-fn">StripeGateway</span>(key=SECRET)):
+    <span class="c-fn">refund</span>(order)                 <span class="c-com"># from the context</span>
 
-<span class="c-fn">report</span>(<span class="c-fn">Config</span>(url=<span class="c-str">"sqlite://"</span>))  <span class="c-com"># explicit</span></pre>
+<span class="c-fn">refund</span>(order, gw=<span class="c-fn">FakeGateway</span>())   <span class="c-com"># a test passes one</span></pre>
         </div>
       </article>
 
       <article class="nd-feature">
         <div class="nd-feature-text">
           <span class="nd-feature-kicker">Concurrency</span>
-          <h3 class="nd-feature-title">Across tasks and threads</h3>
+          <h3 class="nd-feature-title">The scope survives the fan-out</h3>
           <p>
-            asyncio inherits the context on its own. Plain threads do not, so
-            two helpers close the gap: one binds a callable to a snapshot, the
-            other is a pool whose workers see the submit-time context.
+            asyncio inherits the context by itself, so a task created inside a
+            provider block already sees it. Plain threads do not, and that is
+            where a request id usually disappears from the logs. Two helpers
+            close the gap.
           </p>
           <ul class="nd-feature-bullets">
-            <li>{{ check() }} Sibling tasks stay isolated from each other</li>
-            <li>{{ check() }} <code>Executor</code> is a <code>ThreadPoolExecutor</code> subclass</li>
-            <li>{{ check() }} Worker writes never leak back to the submitter</li>
+            <li>{{ check() }} <code>wrap</code> binds a callable to the context active right now</li>
+            <li>{{ check() }} <code>Executor</code> is a <code>ThreadPoolExecutor</code>, so <code>submit</code> and <code>map</code> are unchanged</li>
+            <li>{{ check() }} A worker's writes stay in the worker, and siblings stay isolated</li>
           </ul>
         </div>
         <div class="nd-mock">
-          {{ mockbar("jobs.py") }}
-          <pre class="nd-mock-body nd-code"><span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-fn">Config</span>()):
-    <span class="c-fn">Thread</span>(target=<span class="c-fn">wrap</span>(job)).<span class="c-fn">start</span>()
-
+          {{ mockbar("upload.py") }}
+          <pre class="nd-mock-body nd-code"><span class="c-kw">with</span> <span class="c-fn">provider</span>(<span class="c-str">"request"</span>, id=request_id):
     <span class="c-kw">with</span> <span class="c-fn">Executor</span>(max_workers=<span class="c-num">4</span>) <span class="c-kw">as</span> pool:
-        pool.<span class="c-fn">submit</span>(job)   <span class="c-com"># sees Config</span></pre>
+        pool.<span class="c-fn">map</span>(thumbnail, upload.pages)
+
+    <span class="c-fn">Thread</span>(target=<span class="c-fn">wrap</span>(warm_cache)).<span class="c-fn">start</span>()
+
+<span class="c-kw">def</span> <span class="c-fn">thumbnail</span>(page):
+    <span class="c-fn">log</span>.<span class="c-fn">info</span>(<span class="c-str">"resizing"</span>, request_id=<span class="c-fn">use</span>(<span class="c-str">"request"</span>).id)</pre>
         </div>
       </article>
 
       <article class="nd-feature">
         <div class="nd-feature-text">
-          <span class="nd-feature-kicker">Errors</span>
-          <h3 class="nd-feature-title">Misses that explain themselves</h3>
+          <span class="nd-feature-kicker">Testing</span>
+          <h3 class="nd-feature-title">Nothing to mock, nothing to reset</h3>
           <p>
-            A missing provider names what was asked for, lists what is active,
-            suggests the close match, and points at the line you forgot to
-            write.
+            Injected code under test is still a function you can call with
+            arguments, so the common case needs no fixture at all. For the
+            tests that do exercise providers, <code>isolate()</code> hands each
+            one a clean slate and puts the outer state back afterwards.
           </p>
           <ul class="nd-feature-bullets">
-            <li>{{ check() }} <code>NoProviderError</code> subclasses <code>LookupError</code></li>
-            <li>{{ check() }} The key and the active keys are attributes</li>
-            <li>{{ check() }} <code>frozen=True</code> turns callee writes into errors</li>
+            <li>{{ check() }} No patching of module globals, because there are none</li>
+            <li>{{ check() }} <code>isolate()</code> clears providers and rolls back <code>set_default</code></li>
+            <li>{{ check() }} <code>active()</code> is a read-only view of what is provided right now</li>
           </ul>
         </div>
         <div class="nd-mock">
-          {{ mockbar("traceback") }}
-          <pre class="nd-mock-body nd-code"><span class="c-kw">NoProviderError</span>: <span class="c-fn">use</span>(<span class="c-str">'datbase'</span>): no active
-provider for <span class="c-str">'datbase'</span>. Active providers:
-<span class="c-str">'cache'</span>, <span class="c-str">'database'</span>. Did you mean <span class="c-str">'database'</span>?
-Hint: did you forget <span class="c-str">`with provider('datbase')`</span>?</pre>
+          {{ mockbar("test_billing.py") }}
+          <pre class="nd-mock-body nd-code"><span class="c-deco">@pytest.fixture</span>(autouse=<span class="c-kw">True</span>)
+<span class="c-kw">def</span> <span class="c-fn">_context</span>():
+    <span class="c-kw">with</span> nodrill.<span class="c-fn">isolate</span>():      <span class="c-com"># fresh state per test</span>
+        <span class="c-kw">yield</span>
+
+<span class="c-kw">def</span> <span class="c-fn">test_refund_credits_the_order</span>():
+    gw = <span class="c-fn">FakeGateway</span>()
+    <span class="c-fn">refund</span>(order, gw=gw)          <span class="c-com"># no provider needed</span>
+    <span class="c-kw">assert</span> gw.credits == [(order.id, order.total)]</pre>
         </div>
       </article>
 
+    </div>
+
+    <div class="nd-rest">
+      <article class="nd-rest-card">
+        <h3><code>frozen=True</code></h3>
+        <p>
+          Hand consumers a read-only view while the block keeps the writable
+          object. A callee that assigns gets <code>FrozenContextError</code>
+          instead of a bug three layers up.
+        </p>
+      </article>
+      <article class="nd-rest-card">
+        <h3><code>set_default</code></h3>
+        <p>
+          Declare the fallback for a class once, and code that also has to run
+          outside any provider keeps working. The factory runs per miss, so it
+          is never a cached singleton.
+        </p>
+      </article>
+      <article class="nd-rest-card">
+        <h3><code>nodrill.context</code></h3>
+        <p>
+          An ambient attribute namespace for the values that are not shaped
+          like a scope, on its own <code>ContextVar</code> so it cannot shadow
+          anything a provider set.
+        </p>
+      </article>
+      <article class="nd-rest-card">
+        <h3>Errors that help</h3>
+        <p>
+          A miss names the key, lists what is active, and suggests the close
+          match.
+        </p>
+        <p class="nd-rest-code">NoProviderError: use('datbase'): no active provider for 'datbase'. Active providers: 'cache', 'database'. Did you mean 'database'?</p>
+      </article>
     </div>
   </div>
 </section>
