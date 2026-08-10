@@ -165,3 +165,7 @@ class TestNamespace:
     def test_repr_of_provider_namespace_includes_name(self) -> None:
         with provider("app", a=1) as ctx:
             assert repr(ctx) == "Namespace('app', a=1)"
+
+    def test_repr_of_an_empty_provider_namespace_is_the_name_alone(self) -> None:
+        with provider("app") as ctx:
+            assert repr(ctx) == "Namespace('app')"

@@ -57,7 +57,7 @@ The factory runs on every miss rather than caching its first result, since a cac
 A registered factory wins over the call-site default, because registration declares the canonical fallback for the class, while the call-site default only says what this one caller can live with.
 
 The defaults table itself is a module-level dict of factories written at import time.
-That is configuration rather than flowing state, and state lives only in ContextVars, with the one further exception argued for below.
+That is configuration rather than flowing state, and state lives only in ContextVars, with the two further exceptions argued for below.
 
 The ambient context object
 --------------------------
@@ -244,8 +244,19 @@ provider() signature
 The implementation takes ``*args``, so a positional target wins and a ``name=`` keyword becomes a prefill value, and with no positional the ``name=`` keyword is the key, strings only.
 ``Namespace.__init__(self, /, **values)`` is positional-only for the same reason, so ``Namespace(self=1)`` is legal data.
 
-``frozen``, ``key`` and ``extend`` are the three names that cannot be prefill data, being the function's own parameters.
-That list is the running cost of the design and the reason a fourth one has to argue for itself.
+``frozen``, ``key``, ``extend`` and ``annotate`` are the four names that cannot be prefill data, being the function's own parameters.
+That list is the running cost of the design, and each new name has to argue for itself against two tests rather than against a count.
+A count was tried as the rule and does not work, because the number it stops at is only the number that happened to be reached first.
+
+The first test is that the name describes the block rather than the value it provides.
+``frozen``, ``key`` and ``extend`` describe what the provider registers and hands out, and ``annotate`` describes what the block says on its way out.
+The second is that nothing at the call site can say the same thing.
+A value can be handed over already frozen by the caller, so the argument for ``frozen`` is about who sees the read-only view rather than about what the object is, and a scope that annotates itself has no call to hang the decision on at all.
+A name failing either test is a different constructor rather than a further flag.
+
+``annotate`` passes both.
+A process-wide switch alone cannot let a layer holding a credential stay out of a traceback while the rest of the process annotates, and that layer is exactly the one a reader would rather not find in an error tracker, so the override has to be per block.
+A second entry point was rejected here for the same reason it was rejected for ``extend``, since a reader would then need two spellings before they could say what a scope does.
 
 extend=True merges by copying
 -----------------------------
@@ -307,10 +318,41 @@ The same argument settles the rest of the shape.
 Recording is process-wide and reference counted rather than scoped, since a per-context switch could not observe a cross-context failure either.
 Writes take a lock and reads do not, because a read only happens on a miss and copies the dict before walking it, so a concurrent write can degrade the message and cannot break it.
 Entries hold the key and the site, never the value, since a debugging aid that keeps request objects alive past their scope is a leak with good intentions.
-They are keyed by the provider's ``id``, so the block is not kept alive either.
+They are keyed by a serial the provider holds until it exits, rather than by its ``id``, which the next provider at that address would reuse.
 
 Read counting, the ``unused=True`` half, stays off the hot path a different way.
 Instead of a branch in ``use()``, the provider installs a ``dict`` subclass as the registry and that subclass counts what is read out of it, so the cost lands on the contexts a counting provider created and ``use()`` is the function it was.
+
+Notes are written on the way out, and only then
+-----------------------------------------------
+
+``annotate_exceptions()`` attaches a :pep:`678` note in ``_Provider.__exit__``, after the registry token has been reset, because restoring the scope must never depend on a user's ``__repr__``.
+The visible consequence is that a ``__repr__`` calling ``use()`` reads the enclosing scope rather than the one being described.
+
+Both halves of the attach are guarded, since a diagnostic that damages the failure it describes is worse than no diagnostic.
+A ``__repr__`` raising an ``Exception`` renders as unprintable, and an exception that refuses the note, a frozen dataclass exception among them, goes unannotated rather than being replaced by the ``FrozenInstanceError`` that says so.
+The one thing not caught is a ``BaseException`` out of a ``__repr__``, which matches what a ``lazy`` factory raising one already does.
+
+The switch is process-wide module state rather than a ContextVar, which makes it the third exception to the state-lives-in-ContextVars rule and so is argued for rather than waved through.
+An exception crosses contexts as it propagates, so a scoped switch would be read in whichever context the block happens to exit in, and the scoped question is already answered by ``annotate=`` on the block itself.
+Unlike the debug ledger this keeps no records and takes no lock, being one boolean written at startup, and ``isolate()`` deliberately does not reset it, for the same reason it does not reset debug recording.
+
+Only the last step of the note path is version dependent, a callable bound once from ``getattr(BaseException, "add_note", ...)``, since notes are 3.11 and up.
+Everything above it, the guard, the flattening and the truncation, runs identically on every supported interpreter, so the builder is exercised by the same tests everywhere and Python 3.10 differs only in that the finished note is dropped.
+Emulating notes there was rejected twice over, since rewriting ``args`` breaks equality and pickling on the user's own exception, and chaining a synthetic exception rewrites the traceback the feature exists to preserve.
+
+A note names what its own block provided and never what the block inherited.
+For an ``extend=True`` layer that is the values it laid over the copy rather than the merged namespace it registered, and the rule exists because the alternative leaks.
+A layer opened with ``annotate=False`` because it holds a credential is copied by any layer extending it, and printing the merge would put the credential in the traceback that the ``annotate=False`` was written to prevent.
+Inheriting the flag instead was rejected, since the registry holds the namespace rather than the provider that opened it, so the inner block cannot see what the outer one asked for without keeping annotation state on the value itself.
+The price is that an attribute set on an extending layer inside the block is not in its note, which is the same trade the copy already makes in the other direction.
+
+Only an ``Exception`` is annotated.
+A ``CancelledError`` passes through every block open in a cancelled task, a ``GeneratorExit`` through every block a collected generator was holding, and a ``SystemExit`` through every block open at a clean exit, so annotating a bare ``BaseException`` would put a growing pile of scope lines on ordinary control flow.
+
+Duplicates are accepted rather than suppressed.
+A provider object reused in a retry loop, over one exception object that escapes every attempt, collects one note per attempt, which is a true record of how many blocks the exception left.
+Suppressing a repeat would need either an equality check against ``__notes__``, which would make a retry read as a single attempt, or a process-wide set of exceptions already annotated, which is more module state than the feature is worth.
 
 Module layout
 -------------
@@ -318,6 +360,7 @@ Module layout
 ``_core`` is the registry, holding ``provider``, ``use``, ``set_default``, ``active``, ``Namespace`` and ``isolate``.
 ``_frozen`` and ``_ambient`` hold the two things that share nothing with it but a ContextVar, the read-only proxy and the ambient namespace, both of which are mostly protocol tables and would otherwise dominate the file they sit in.
 ``_debug`` is instrumentation rather than registry, and sits beside ``_core`` because nothing on a successful lookup reads it.
+``_report`` is reporting rather than registry, sharing with ``_core`` only the value a provider is holding, and nothing in it runs until an exception is already leaving a block.
 ``_inject``, ``_concurrency`` and ``_errors`` are the remaining features.
 Nothing under ``nodrill._*`` is public.
 

@@ -10,5 +10,6 @@ What the library is for, what it deliberately is not, and why it is built the wa
 
    scope
    design
+   performance
    faq
    contributing

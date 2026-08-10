@@ -98,7 +98,7 @@ class _Ref:
 
 
 # What use() and provider(key=) accept, once a late-bound name is one of them.
-_Key = str | type[Any] | _Ref
+_KeyArg = str | type[Any] | _Ref
 
 
 def _is_ref(value: Any) -> bool:

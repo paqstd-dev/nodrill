@@ -22,9 +22,8 @@ from types import TracebackType
 from typing import Any, NamedTuple
 from weakref import WeakKeyDictionary
 
-from ._errors import UnusedProviderWarning, _describe_key
+from ._errors import UnusedProviderWarning, _describe_key, _Key
 
-_Key = str | type[Any]
 _Registry = dict[_Key, Any]
 
 # Skipped when naming a site, so an ExitStack or _LazyProvider entry names the user's line.
@@ -281,7 +280,8 @@ def _diagnose(key: _Key) -> str | None:
     if not candidates:
         return _forgotten_record(key) if key in _forgotten else None
     entry = min(candidates, key=lambda block: _rank(block, here))
-    return _already_closed(entry) if entry.closed is not None else _open_elsewhere(entry, here)
+    closed = entry.closed
+    return _open_elsewhere(entry, here) if closed is None else _already_closed(entry, closed)
 
 
 def _on(where: _Where) -> str:
@@ -318,10 +318,9 @@ def _open_elsewhere(entry: _Block, here: _Where) -> str:
     )
 
 
-def _already_closed(entry: _Block) -> str:
+def _already_closed(entry: _Block, closed: _Site) -> str:
     """Explain a key whose block has already exited."""
     name = _describe_key(entry.key)
-    closed = _UNKNOWN if entry.closed is None else entry.closed
     where = f"{name} was open at {entry.site.file}:{entry.site.line}"
     # A with exits on its own line, so print the exit site only when something else closed it.
     if closed != entry.site:

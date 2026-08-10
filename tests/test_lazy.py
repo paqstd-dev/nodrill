@@ -1,5 +1,6 @@
 """Providers whose value is built on the first read, and not at all without one."""
 
+import asyncio
 import copy
 import gc
 import threading
@@ -157,6 +158,22 @@ class TestFailure:
                 seen.append(caught.value)
         assert calls == [1]
         assert seen[0] is seen[1] is seen[2]
+
+    def test_a_base_exception_is_not_cached(self) -> None:
+        """A cancelled task says nothing about the factory, so the next read runs it again."""
+        attempts: list[int] = []
+
+        def factory() -> Config:
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise asyncio.CancelledError
+            return Config(tag="second")
+
+        with provider(lazy(Config, factory)):
+            with pytest.raises(asyncio.CancelledError):
+                touch()
+            assert use(Config).tag == "second"
+        assert attempts == [1, 1]
 
     def test_a_later_scope_gets_a_fresh_attempt(self) -> None:
         attempts: list[int] = []

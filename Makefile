@@ -79,7 +79,7 @@ linkcheck: .uv
 audit: .uv
 	$(UVX) zizmor@$(ZIZMOR_VERSION) .
 
-.PHONY: bench  ## Time the hot paths; ARGS="--write" updates the README table
+.PHONY: bench  ## Time the hot paths, and rewrite the performance page with ARGS="--write"
 bench: .uv
 	$(RUN) python benchmarks/bench.py $(ARGS)
 
