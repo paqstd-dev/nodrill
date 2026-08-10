@@ -245,8 +245,16 @@ The implementation takes ``*args``, so a positional target wins and a ``name=`` 
 ``Namespace.__init__(self, /, **values)`` is positional-only for the same reason, so ``Namespace(self=1)`` is legal data.
 
 ``frozen``, ``key``, ``extend`` and ``annotate`` are the four names that cannot be prefill data, being the function's own parameters.
-That list is the running cost of the design and the reason each new one has to argue for itself.
-``annotate`` argued this way.
+That list is the running cost of the design, and each new name has to argue for itself against two tests rather than against a count.
+A count was tried as the rule and does not work, because the number it stops at is only the number that happened to be reached first.
+
+The first test is that the name describes the block rather than the value it provides.
+``frozen``, ``key`` and ``extend`` describe what the provider registers and hands out, and ``annotate`` describes what the block says on its way out.
+The second is that nothing at the call site can say the same thing.
+A value can be handed over already frozen by the caller, so the argument for ``frozen`` is about who sees the read-only view rather than about what the object is, and a scope that annotates itself has no call to hang the decision on at all.
+A name failing either test is a different constructor rather than a further flag.
+
+``annotate`` passes both.
 A process-wide switch alone cannot let a layer holding a credential stay out of a traceback while the rest of the process annotates, and that layer is exactly the one a reader would rather not find in an error tracker, so the override has to be per block.
 A second entry point was rejected here for the same reason it was rejected for ``extend``, since a reader would then need two spellings before they could say what a scope does.
 
