@@ -33,10 +33,10 @@ Named providers
        app.trace.append("handle")
        print(app.db, app.user_id)
 
-The namespace is a plain attribute bag: read, write, and delete attributes on it as you would on any object.
+The namespace is a plain attribute bag, so read, write and delete attributes on it as you would on any object.
 Reading a name that was never set raises :exc:`AttributeError` naming the provider and listing what is available, which is worth a lot once several named providers are active at once.
 
-There is a keyword spelling too, for the case where the name is computed:
+There is a keyword spelling too, for the case where the name is computed.
 
 .. code-block:: python
 
@@ -63,7 +63,7 @@ Instance providers
        handler()
 
 This is the typed form, and :doc:`typed-contexts` covers it in full.
-It takes no keyword values: the object already carries its own state.
+It takes no keyword values, since the object already carries its own state.
 Passing a class rather than an instance is an error, and says so.
 
 .. code-block:: python
@@ -76,14 +76,14 @@ What a scope does
 Entering a provider copies the registry of active keys, adds one entry, and publishes the result on a :class:`~contextvars.ContextVar`.
 Exiting resets it through the token that ``set`` returned.
 
-Three consequences follow, and all three are the point:
+Three consequences follow, and all three are the point.
 
 Exit is unconditional.
    The value is removed whether the block finished or raised.
    There is no cleanup to remember and no state to leak into the next request.
 
 Same-key providers nest.
-   An inner block shadows the outer value for its duration; the outer value is restored on exit.
+   An inner block shadows the outer value for its duration, and the outer value is restored on exit.
 
    .. code-block:: python
 
@@ -100,7 +100,7 @@ Siblings never see each other.
 Reuse and re-entrancy
 ~~~~~~~~~~~~~~~~~~~~~
 
-The object ``provider(...)`` returns is a context manager that can be entered again after it exits, sequentially:
+The object ``provider(...)`` returns is a context manager that can be entered again after it exits, sequentially.
 
 .. code-block:: python
 
@@ -118,7 +118,7 @@ Mutation is shared
 ------------------
 
 The provided object is shared by reference, not copied.
-A callee that mutates it mutates the caller's object, which is exactly what you want for an accumulating trace or a per-request cache:
+A callee that mutates it mutates the caller's object, which is exactly what you want for an accumulating trace or a per-request cache.
 
 .. code-block:: python
 
@@ -130,7 +130,7 @@ A callee that mutates it mutates the caller's object, which is exactly what you 
        dispatch()                       # deep code appends to scope.trace
        log(scope.trace)
 
-Rebinding the name inside a callee does nothing, as with any Python object: ``use(Config)`` returns the object, and assigning to that local only changes the local.
+Rebinding the name inside a callee does nothing, as with any Python object, because ``use(Config)`` returns the object and assigning to that local only changes the local.
 To publish a different value, open another provider.
 
 Layers that accumulate
@@ -140,7 +140,7 @@ A request scope is rarely known at the boundary.
 Middleware knows the request id, authentication adds the actor, the view adds the action, and something five frames below wants all three.
 Same-key providers shadow, so a second ``provider("audit", ...)`` would hide what the first one set.
 
-``extend=True`` lays a layer over the namespace the same name already holds:
+``extend=True`` lays a layer over the namespace the same name already holds.
 
 .. code-block:: python
 
@@ -151,12 +151,12 @@ Same-key providers shadow, so a second ``provider("audit", ...)`` would hide wha
 
        # here use("audit") sees request_id and actor_id again
 
-It is still one name, one registry entry and one O(1) lookup; what changed is what the entry holds.
+It is still one name, one registry entry and one O(1) lookup, and what changed is what the entry holds.
 Exit is the ordinary token reset, so each block restores exactly the layer that was open before it.
 Values are laid over attribute by attribute, so a name both layers set takes the inner value.
 
 With nothing open under that name, ``extend=True`` behaves as a plain provider.
-That is the property the feature exists for: a layer does not have to know whether it is the first one.
+That is the property the feature exists for, since a layer does not have to know whether it is the first one.
 
 The copy is a snapshot
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -175,7 +175,7 @@ From the moment the inner layer is entered, the two layers are two objects.
 
        use("audit").request_id              # "r-2"
 
-Within one layer nothing is copied: a callee still mutates the namespace the block yielded, as it does for any provided value.
+Within one layer nothing is copied, so a callee still mutates the namespace the block yielded, as it does for any provided value.
 It is the layer boundary that copies.
 
 The merge happens on entry rather than when ``provider()`` is called, so a provider object entered twice layers over whatever encloses it each time.
@@ -187,7 +187,7 @@ What it does not do
 An instance provider layers by providing another value, which for a dataclass is :func:`dataclasses.replace`, and asking for ``extend=True`` there says so.
 
 The merge is one level deep, always.
-A namespace holding a ``dict`` gets the inner layer's ``dict``, not a merge of the two: merging by value type would make the rule about types rather than about scopes.
+A namespace holding a ``dict`` gets the inner layer's ``dict`` rather than a merge of the two, because merging by value type would make the rule about types rather than about scopes.
 
 Extending a name that holds something other than a :class:`~nodrill.Namespace` raises on entry, naming both types, rather than quietly shadowing it.
 
@@ -200,7 +200,7 @@ Lazy providers
 A boundary that opens a provider has to build the value first, and it does not know whether anything below will read it.
 A middleware that wants request context available for auditing pays for ``request.user`` on every request, while the audit path runs on a few percent of them.
 
-``lazy`` moves the construction to the first read:
+``lazy`` moves the construction to the first read.
 
 .. code-block:: python
 
@@ -215,7 +215,7 @@ A middleware that wants request context available for auditing pays for ``reques
 The key is given explicitly, because there is no value yet to derive it from.
 
 What the scope holds is a cell that resolves on the first operation needing the value and then delegates to it.
-Reads, writes, comparisons and the operators behave as the value does, and ``isinstance`` holds before and after resolution, so ordinary code cannot tell the difference:
+Reads, writes, comparisons and the operators behave as the value does, and ``isinstance`` holds before and after resolution, so ordinary code cannot tell the difference.
 
 .. code-block:: python
 
@@ -225,8 +225,8 @@ Reads, writes, comparisons and the operators behave as the value does, and ``isi
        cfg.dsn                              # now it runs
 
 What can tell is ``type()``, which reports the cell, exactly as it does for a frozen view.
-So does ``repr``, and that one is deliberate: it reports the cell's state instead of resolving.
-Inspecting an unresolved value is a debugging act, and a debugging act that opens a database connection is a bad one, which is what keeps :func:`~nodrill.active` safe to print:
+So does ``repr``, and that one is deliberate, reporting the cell's state instead of resolving.
+Inspecting an unresolved value is a debugging act, and a debugging act that opens a database connection is a bad one, which is what keeps :func:`~nodrill.active` safe to print.
 
 .. code-block:: python
 
@@ -241,7 +241,7 @@ Once per scope
 The result is cached until the scope exits, and a second scope starts unresolved again, including a second entry of the same provider object.
 The cache belongs to the scope rather than to the object, which is what keeps a value out of the next request.
 
-The factory runs under the context the scope was entered with, so ``use()`` inside it reads the scope that declared the value:
+The factory runs under the context the scope was entered with, so ``use()`` inside it reads the scope that declared the value.
 
 .. code-block:: python
 
@@ -250,7 +250,7 @@ The factory runs under the context the scope was entered with, so ``use()`` insi
            with provider(Tenant("other")):
                use(Report).owner            # "acme", not "other"
 
-Two threads inside one scope resolve once: the second waits for the first and reads what it built.
+Two threads inside one scope resolve once, and the second waits for the first and reads what it built.
 That wait is a plain lock, so keep a slow factory off an event loop, as you would any blocking call.
 A factory that raises has its exception cached and re-raised on every later touch, so the failure does not depend on which frame happened to read first.
 A factory that reads or returns the key it is building raises :exc:`RuntimeError` instead of recursing.
@@ -262,7 +262,7 @@ Every read goes through the cell, which is the same proxy hop ``frozen=True`` ch
 That is the right trade for a value that costs a round trip to build and is read on a minority of requests, and the wrong one for a value that is cheap to build and read in a loop.
 The README table prices both ends.
 
-``lazy`` composes with ``frozen=True``: the block and the registry get two cells over one build rather than a proxy stacked on a proxy, so a frozen lazy read still costs one hop and the block keeps writing:
+``lazy`` composes with ``frozen=True``, where the block and the registry get two cells over one build rather than a proxy stacked on a proxy, so a frozen lazy read still costs one hop and the block keeps writing.
 
 .. code-block:: python
 
@@ -274,7 +274,7 @@ The README table prices both ends.
 Frozen providers
 ----------------
 
-When callees should read but not write, provide the value frozen:
+When callees should read but not write, provide the value frozen.
 
 .. code-block:: python
 
@@ -289,7 +289,7 @@ The block yields the real object, so whoever opened the scope keeps a writable h
 Everything reached through ``use()`` gets a read-only view instead.
 
 The view is a proxy that delegates reads to the target.
-Attribute access, ``repr``, ``==``, ``hash``, ``dir``, iteration, ``len``, indexing and ``in`` all behave as the real object does, and ``isinstance`` holds, because the proxy reports the target's class:
+Attribute access, ``repr``, ``==``, ``hash``, ``dir``, iteration, ``len``, indexing and ``in`` all behave as the real object does, and ``isinstance`` holds, because the proxy reports the target's class.
 
 .. code-block:: python
 

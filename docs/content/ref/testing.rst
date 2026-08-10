@@ -23,11 +23,11 @@ context
       ...
       log(f"[{context.request_id}]")
 
-   Writes are unscoped: nothing restores them at the end of a block, and a value set in a pooled worker thread survives into that thread's next job.
+   Writes are unscoped, so nothing restores them at the end of a block, and a value set in a pooled worker thread survives into that thread's next job.
    Use :func:`provider` for anything scoped.
 
    The object deliberately exposes no methods, only dunders, so no attribute name your application chooses can collide with the API.
-   The supported operations are:
+   These are the supported operations.
 
    ``context.name``
       Read.
@@ -56,10 +56,11 @@ isolate
    Returns a context manager.
 
    Inside the block no providers are active and the ambient namespace is empty.
-   Registrations made with :func:`set_default` inside the block are rolled back on exit; registrations made outside stay visible inside, since they are configuration rather than state.
+   Registrations made with :func:`set_default` inside the block are rolled back on exit.
+   Registrations made outside stay visible inside, since they are configuration rather than state.
    Refs built with :func:`ref` inside the block are rolled back the same way, so a path one test made up on purpose is not a path the next test's :func:`resolve_refs` has to import.
 
-   Intended for test fixtures:
+   Intended for test fixtures.
 
    .. code-block:: python
       :caption: conftest.py

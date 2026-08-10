@@ -13,7 +13,7 @@ The parts that are not need one fixture.
 Prefer explicit arguments
 -------------------------
 
-``@inject`` never overrides an argument the caller passed, so a test can call an injected function directly, outside any provider, with whatever fakes it likes:
+``@inject`` never overrides an argument the caller passed, so a test can call an injected function directly, outside any provider, with whatever fakes it likes.
 
 .. code-block:: python
 
@@ -25,9 +25,9 @@ Prefer explicit arguments
        assert send_welcome("bob@test", mailer=FakeMailer()) == "..."
 
 No providers, no patching, no fixture.
-This is the main reason injection is worth having over a bare module-level global: the seam is a parameter, and parameters are the easiest thing in Python to control from a test.
+This is the main reason injection is worth having over a bare module-level global, because the seam is a parameter, and parameters are the easiest thing in Python to control from a test.
 
-Code that calls ``use()`` in the body has no such seam, and does need a scope:
+Code that calls ``use()`` in the body has no such seam, and does need a scope.
 
 .. code-block:: python
 
@@ -42,9 +42,9 @@ isolate()
 ---------
 
 ``isolate()`` runs a block against fresh context state and restores the outer state on exit.
-Inside it, no providers are active and the ambient namespace is empty; any ``set_default`` registration made inside is rolled back on the way out.
+Inside it, no providers are active and the ambient namespace is empty, and any ``set_default`` registration made inside is rolled back on the way out.
 
-As a pytest fixture:
+As a pytest fixture.
 
 .. code-block:: python
    :caption: conftest.py
@@ -61,14 +61,14 @@ That makes every test start from the same state regardless of what ran before it
 
 It also makes the suite order-independent, which is worth having if you run tests in a random order.
 
-Registrations made outside the block stay visible inside it: they are configuration written at import time, not state, and hiding them would break every test of code that relies on a registered default.
+Registrations made outside the block stay visible inside it, being configuration written at import time rather than state, and hiding them would break every test of code that relies on a registered default.
 Overriding one inside a block is fine and is undone on exit.
 
 Testing async code
 ------------------
 
 Nothing special is required.
-``asyncio.run`` and pytest-asyncio both run the coroutine in a context that inherits the test's, so a provider opened in the test body is visible inside the coroutine:
+``asyncio.run`` and pytest-asyncio both run the coroutine in a context that inherits the test's, so a provider opened in the test body is visible inside the coroutine.
 
 .. code-block:: python
 
@@ -80,7 +80,7 @@ Testing threaded code
 ---------------------
 
 A thread started from a test sees no providers, exactly as it would in production.
-Test the two paths deliberately: assert that the bare thread raises :exc:`~nodrill.NoProviderError`, and that the wrapped one does not.
+Test the two paths deliberately, asserting that the bare thread raises :exc:`~nodrill.NoProviderError` and that the wrapped one does not.
 
 .. code-block:: python
 

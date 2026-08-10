@@ -5,7 +5,7 @@ Fan out with asyncio
 
 Each concurrent worker gets its own scope, and the workers interleave on one event loop without ever seeing each other's values.
 
-Nothing here is nodrill-specific plumbing: ``create_task`` and ``gather`` snapshot the context themselves, so there is nothing to configure.
+Nothing here is nodrill-specific plumbing, since ``create_task`` and ``gather`` snapshot the context themselves, so there is nothing to configure.
 
 .. code-block:: python
    :caption: fanout.py
@@ -65,12 +65,13 @@ Every printed line names the tenant its own task was handling, in spite of the
 Notes
 -----
 
-The background task is created inside the provider block and awaited inside it too, but it would resolve the same tenant either way: it captured the context at creation, so exiting the block in the parent does not affect it.
+The background task is created inside the provider block and awaited inside it too, but it would resolve the same tenant either way.
+It captured the context at creation, so exiting the block in the parent does not affect it.
 
 ``asyncio.gather`` runs the three coroutines in the calling task's context.
 Each one then opens its own provider, and because entering a provider publishes a new registry rather than mutating a shared one, the three never collide.
 
-The same holds for ``asyncio.TaskGroup`` and for :meth:`~asyncio.loop.run_in_executor`, though the latter crosses into a thread pool: see :doc:`run-work-in-threads`.
+The same holds for ``asyncio.TaskGroup`` and for :meth:`~asyncio.loop.run_in_executor`, though the latter crosses into a thread pool, which :doc:`run-work-in-threads` covers.
 
 If a coroutine spawns a task and never awaits it, the task still holds its snapshot until it finishes, which keeps the provided object alive.
 That is ordinary reference behaviour, worth knowing when the provided object is large.

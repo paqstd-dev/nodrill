@@ -5,7 +5,7 @@ Providers and lookups
 
 .. currentmodule:: nodrill
 
-The core of the library: open a scope, defer what it costs to fill, read from it, register a fallback, and the namespace object string-named providers hand back.
+The core of the library, opening a scope, deferring what it costs to fill, reading from it, registering a fallback, and the namespace object string-named providers hand back.
 
 provider
 --------
@@ -15,7 +15,7 @@ provider
                provider(*, name, frozen=False, extend=False, **values)
 
    Make a value available to the whole call subtree through :func:`use`.
-   Returns a context manager; the value is registered on entry and removed on exit, whether the block completes or raises.
+   Returns a context manager, and the value is registered on entry and removed on exit, whether the block completes or raises.
 
    :param name: A string key.
       The block yields a fresh :class:`Namespace` registered under it, prefilled from ``**values``.
@@ -23,12 +23,12 @@ provider
       It is registered under ``type(instance)`` and yielded unchanged.
       Keyword values are rejected in this form.
    :param key: The key to register an instance under, instead of its own class.
-      A string name, a class, or a :func:`ref` naming one; see :ref:`explicit-keys` below.
+      A string name, a class, or a :func:`ref` naming one, covered under :ref:`explicit-keys` below.
       Rejected for string-named providers, which already have a key.
    :param frozen: When true, code reading through :func:`use` gets a read-only view while the handle the block yields stays writable.
       See :ref:`frozen-views` below.
    :param extend: When true, the block lays ``**values`` over a copy of the namespace the same name already holds, instead of shadowing it.
-      String-named providers only; see :ref:`extending-providers` below.
+      String-named providers only, covered under :ref:`extending-providers` below.
    :raises TypeError: More than one positional argument, no target at all, a class or a :func:`ref` rather than an instance, keyword values with an instance target, a non-string ``name=``, a ``key=`` that is neither a string nor a class, a ``key=`` beside a :func:`lazy` target, which already names its own key, or ``extend=True`` on anything but a string name.
       On entry, ``extend=True`` over a name that holds something other than a :class:`Namespace`.
    :raises RuntimeError: On entering a provider object that is already active.
@@ -49,7 +49,7 @@ provider
    The returned object may be entered again after it exits, but not while it is active.
 
    ``async with`` works too, and does exactly what ``with`` does.
-   Nothing here awaits; the async protocol exists so the statement reads the way async code expects.
+   Nothing here awaits, and the async protocol exists so the statement reads the way async code expects.
 
 .. _explicit-keys:
 
@@ -68,12 +68,12 @@ Explicit keys
        repo = use(Repository)
 
 Keys stay exact.
-The instance answers ``use(Repository)`` and nothing else: ``use(PostgresRepository)`` misses, because one provider registers one key.
+The instance answers ``use(Repository)`` and nothing else, so ``use(PostgresRepository)`` misses, because one provider registers one key.
 
 A string works as well, ``provider(instance, key="repo")``, for a role that has no type to name it.
 Note that ``use()`` on a string key is typed as returning :class:`Namespace`, so this form gives up the typed return.
 
-Whether the instance actually satisfies ``key`` is not checked: a runtime :func:`isinstance` against a plain :class:`~typing.Protocol` is not possible, and a type checker already checks the call site.
+Whether the instance actually satisfies ``key`` is not checked, since a runtime :func:`isinstance` against a plain :class:`~typing.Protocol` is not possible, and a type checker already checks the call site.
 
 .. _frozen-views:
 
@@ -82,7 +82,7 @@ Frozen views
 
 With ``frozen=True`` the registry stores a proxy rather than the object itself.
 
-The proxy forwards the protocols an object is normally used through: attribute reads, ``repr`` and ``str``, ``format``, ``==``, ``!=``, ``hash``, ``bool``, ``dir``, ``len``, iteration, indexing, ``in``, the orderings, arithmetic and its reflected forms, the numeric conversions, calling, and the ``with``, ``async with``, ``await`` and ``async for`` protocols.
+The proxy forwards the protocols an object is normally used through, attribute reads, ``repr`` and ``str``, ``format``, ``==``, ``!=``, ``hash``, ``bool``, ``dir``, ``len``, iteration, indexing, ``in``, the orderings, arithmetic and its reflected forms, the numeric conversions, calling, and the ``with``, ``async with``, ``await`` and ``async for`` protocols.
 ``isinstance`` holds, because the proxy reports the target's class.
 
 Three things do not go through.
@@ -114,11 +114,11 @@ With ``extend=True`` the block copies the namespace the same name currently hold
 
        use("audit").actor_id                # AttributeError
 
-Attributes shadow one at a time, so a name set by both layers takes the inner value, and the merge is one level deep: a value that is itself a mapping is replaced, not merged.
+Attributes shadow one at a time, so a name set by both layers takes the inner value, and the merge is one level deep, where a value that is itself a mapping is replaced rather than merged.
 With no enclosing provider under that name it is an ordinary provider, so a layer needs no branch for being the first one.
 
 The copy is taken when the block is entered, not when ``provider()`` is called, which is observable for a provider object entered twice around different enclosing layers.
-It is a snapshot in both directions: a later write to the outer namespace is invisible inside the block, and a write inside the block is invisible outside it.
+It is a snapshot in both directions, so a later write to the outer namespace is invisible inside the block, and a write inside the block is invisible outside it.
 Nothing is copied within a layer, so a callee still mutates the namespace the block yielded.
 
 The layer inherits the name, so an :exc:`AttributeError` still reports which provider the namespace came from, and it does not inherit ``frozen``.
@@ -135,7 +135,7 @@ lazy
 .. function:: lazy(key, factory, /)
 
    Build a provided value on the first read inside the scope, and not at all without one.
-   Pass the result to :func:`provider`; nothing else accepts it.
+   Pass the result to :func:`provider`, which is the only thing that accepts it.
 
    :param key: The class the value is registered under, or a :func:`ref` naming one, which resolves at this call.
       Given explicitly, since there is no value yet to derive it from, and not checked against what the factory returns.
@@ -155,7 +155,7 @@ lazy
    It runs under the context the scope was entered with, so a factory calling :func:`use` reads the scope that declared the value and not whichever one happened to touch it first.
    Writes to a :class:`~contextvars.ContextVar` inside the factory therefore stay in that snapshot, as they do inside :func:`wrap`.
 
-   Two threads inside one scope run the factory once; the second waits for the first.
+   Two threads inside one scope run the factory once, and the second waits for the first.
    That wait is an ordinary lock acquisition, so a coroutine reading a key another thread is still building blocks its whole event loop.
    A factory that hands that read to another thread and waits for it deadlocks, as any once-only initialisation does.
 
@@ -166,7 +166,7 @@ lazy
 
    The registry stores a cell that resolves and delegates, so ``isinstance`` holds before and after resolution and reads, writes and the operators behave as the value does.
    Its gaps are the ones :ref:`frozen-views` has, and for the same reason.
-   ``repr`` is deliberately different: it reports the cell's state rather than resolving, which is what keeps :func:`active` free of side effects.
+   ``repr`` is deliberately different and reports the cell's state rather than resolving, which is what keeps :func:`active` free of side effects.
    ``str`` is not, so ``print(use(Cls))`` does run the factory.
 
    .. code-block:: python
@@ -176,7 +176,7 @@ lazy
           use(Config).dsn                       # resolves
           repr(use(Config))                     # "<lazy Config, Config(dsn='...')>"
 
-   With ``frozen=True`` the block and the registry get two views of one build: the block's handle stays writable and consumers get the read-only view described in :ref:`frozen-views`.
+   With ``frozen=True`` the block and the registry get two views of one build, so the block's handle stays writable and consumers get the read-only view described in :ref:`frozen-views`.
    The factory still runs once, on whichever view is touched first, and either costs one proxy hop per read.
    The block yields a cell rather than the object, since with nothing built yet there is no object to hand over.
 
@@ -191,7 +191,7 @@ use
    Return the value provided for ``key`` by the nearest enclosing provider.
 
    :param key: A string name, a class, or a :func:`ref` naming one.
-      A string returns the provider's :class:`Namespace`; a class returns the provided instance, typed as that class.
+      A string returns the provider's :class:`Namespace`, and a class returns the provided instance, typed as that class.
    :param default: Returned when no provider matches and no factory is registered.
    :raises TypeError: ``key`` is neither a string nor a class.
    :raises NoProviderError: Nothing matched and no fallback was available.
@@ -200,10 +200,10 @@ use
    Class lookups are by exact type.
    Providing a ``Sub`` instance does not answer ``use(Base)``.
 
-   On a miss the fallbacks are tried in order: a factory registered with :func:`set_default`, then ``default``, then the exception.
+   On a miss the fallbacks are tried in order, a factory registered with :func:`set_default`, then ``default``, then the exception.
    A registered factory therefore takes precedence over a call-site default.
 
-   The overloads give type checkers the four return types:
+   The overloads give type checkers the four return types.
 
    .. code-block:: python
 
@@ -240,7 +240,7 @@ ref
       def on_save(sender, instance, **kwargs):
           scope = use(RequestScope)
 
-   The result goes wherever a class key goes: :func:`use`, ``provider(instance, key=...)``, :func:`lazy`, :func:`set_default`, :func:`from_ctx` and ``@inject(from_=...)``.
+   The result goes wherever a class key goes, into :func:`use`, ``provider(instance, key=...)``, :func:`lazy`, :func:`set_default`, :func:`from_ctx` and ``@inject(from_=...)``.
    It is a key and not a value, so ``provider(ref(...))`` raises.
    The instance is what a provider takes, and the ref names what to register it under.
    A path naming a string constant works as well and answers the name that string holds, compared by value the way any string key is.
@@ -256,7 +256,7 @@ ref
    The provider side resolves immediately, at the ``provider()``, :func:`lazy` or :func:`set_default` call, so the registry only ever holds a class and :func:`active` shows one.
    Only the consumer side is deferred, which is the side with the import problem.
 
-   The typed spelling is the one :data:`FromCtx` uses, two names for one thing:
+   The typed spelling is the one :data:`FromCtx` uses, two names for one thing.
 
    .. code-block:: python
 
@@ -306,10 +306,10 @@ set_default
    :param factory: A zero-argument callable returning an instance, or ``None`` to remove an existing registration.
    :raises TypeError: ``cls`` is not a class, or ``factory`` is neither callable nor ``None``.
 
-   The factory runs on every miss and returns a fresh instance each time; the result is never cached.
+   The factory runs on every miss and returns a fresh instance each time, and the result is never cached.
 
    Registrations are global to the process and are not scoped to a context.
-   They apply to class keys only: string keys have no equivalent, and use ``use(key, default=...)`` instead.
+   They apply to class keys only, since string keys have no equivalent and use ``use(key, default=...)`` instead.
 
    :func:`isolate` rolls back registrations made inside its block, and leaves pre-existing ones visible.
 
@@ -321,7 +321,7 @@ active
    Return a read-only :class:`~types.MappingProxyType` over the providers active right now, keyed exactly as :func:`use` looks them up.
 
    For debugging a missing provider without having to trigger the error, and for test assertions.
-   The result is a snapshot of the current scope; providers opened afterwards do not appear in it.
+   The result is a snapshot of the current scope, and providers opened afterwards do not appear in it.
 
    .. code-block:: python
 
@@ -341,10 +341,10 @@ Namespace
 
    Reading an attribute that was never set raises :exc:`AttributeError` naming the provider it belongs to and listing the attributes that are set.
 
-   Two namespaces are equal when their attributes are, whatever provider made them; ``vars(ns)`` gives the attributes as a plain :class:`dict`.
+   Two namespaces are equal when their attributes are, whatever provider made them, and ``vars(ns)`` gives the attributes as a plain :class:`dict`.
    As with :class:`types.SimpleNamespace`, value equality on a mutable object means instances are unhashable.
 
-   Instances are usually created by :func:`provider` rather than directly; the class is exported so it can be used in annotations.
+   Instances are usually created by :func:`provider` rather than directly, and the class is exported so it can be used in annotations.
 
    .. code-block:: python
 

@@ -9,7 +9,7 @@ nodrill is a pure-Python package with no dependencies.
 
    pip install nodrill
 
-Or, with uv:
+Or, with uv.
 
 .. code-block:: bash
 

@@ -6,7 +6,7 @@ nodrill
 =======
 
 .. The landing page is rendered by docs/_templates/layout/landing.html.
-   This source carries the :layout: landing metadata and the navigation toctrees below; its body is intentionally not displayed.
+   This source carries the layout metadata and the navigation toctrees below, and its body is intentionally not displayed.
 
 .. toctree::
    :caption: Getting started

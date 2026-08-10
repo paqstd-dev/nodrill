@@ -26,9 +26,9 @@ Annotate the parameter with a marker and give it the ``injected`` default.
    with provider(Config(url="postgres://prod")):
        report()
 
-``FromCtx[SomeClass]`` injects the nearest instance of that class: it is ``use(SomeClass)``, written in the signature.
+``FromCtx[SomeClass]`` injects the nearest instance of that class, which is ``use(SomeClass)`` written in the signature.
 
-To pull a single attribute out of a named provider, annotate with ``from_ctx("name")``:
+To pull a single attribute out of a named provider, annotate with ``from_ctx("name")``.
 
 .. code-block:: python
 
@@ -61,14 +61,14 @@ The attribute taken from the namespace is the one named after the parameter, so 
 Explicit arguments always win
 -----------------------------
 
-An argument the caller passes is never overridden, an explicit ``None`` included:
+An argument the caller passes is never overridden, an explicit ``None`` included.
 
 .. code-block:: python
 
    report()                             # injected from the context
    report(Config(url="sqlite://"))      # exactly what was passed
 
-This is what makes injected code testable with nothing set up: a test calls the function with fakes, outside any provider, and the context is never consulted.
+This is what makes injected code testable with nothing set up, since a test calls the function with fakes, outside any provider, and the context is never consulted.
 See :doc:`/content/howto/test-injected-code`.
 
 The ``injected`` sentinel
@@ -85,7 +85,7 @@ By-name mode
 ------------
 
 ``@inject(from_="app")`` is the opt-in bulk form.
-Every parameter whose name matches an attribute of ``use("app")`` is filled from it; ``self`` and ``cls`` are skipped.
+Every parameter whose name matches an attribute of ``use("app")`` is filled from it, and ``self`` and ``cls`` are skipped.
 
 .. code-block:: python
 
@@ -97,7 +97,7 @@ Every parameter whose name matches an attribute of ``use("app")`` is filled from
        render()                         # user_id=42, theme="dark"
 
 Note the second parameter.
-In this mode a matching attribute **overrides the parameter default**, which is the reason to opt in: the context is the source of truth for that scope, and a default is only what to do when the context is silent.
+In this mode a matching attribute **overrides the parameter default**, which is the reason to opt in, because the context is the source of truth for that scope and a default is only what to do when the context is silent.
 Passing the argument explicitly restores control at any call site.
 
 A required parameter that neither the caller nor the context supplied raises :exc:`TypeError` naming the parameter and the context key.
@@ -107,7 +107,7 @@ A required parameter that neither the caller nor the context supplied raises :ex
 What can be decorated
 ---------------------
 
-``@inject`` works on plain functions, ``async def`` coroutines, instance methods, classmethods and staticmethods, in either decorator order:
+``@inject`` works on plain functions, ``async def`` coroutines, instance methods, classmethods and staticmethods, in either decorator order.
 
 .. code-block:: python
 
@@ -125,7 +125,7 @@ What can be decorated
 
 Two things are rejected.
 Injecting into ``*args`` or ``**kwargs`` raises at decoration time, since there is no parameter to fill.
-And generator functions, sync or async, are refused outright:
+And generator functions, sync or async, are refused outright.
 
 .. code-block:: python
 
@@ -135,7 +135,7 @@ And generator functions, sync or async, are refused outright:
 
 Injection resolves when the function is called, but a generator body runs later, at the first ``next()``, possibly under different providers.
 Whatever was resolved at call time would be silently stale by then.
-Call ``use()`` inside the body instead, and iterate while the provider block is still open:
+Call ``use()`` inside the body instead, and iterate while the provider block is still open.
 
 .. code-block:: python
 
@@ -151,13 +151,13 @@ When it resolves
 ----------------
 
 The injection plan is built once, at decoration time, from :func:`inspect.signature` and :func:`typing.get_type_hints`, and compiles into a wrapper that mirrors the function's own signature.
-A call binds its arguments natively and pays one sentinel check per injectable parameter: whatever the caller passed explicitly is left untouched, and the rest resolves from the context active at that moment.
+A call binds its arguments natively and pays one sentinel check per injectable parameter, so whatever the caller passed explicitly is left untouched, and the rest resolves from the context active at that moment.
 
 If the annotations name something not yet defined, a string annotation under ``from __future__ import annotations`` pointing at a class further down the module, hint resolution raises :exc:`NameError` at decoration time.
 ``@inject`` catches that and defers the plan to the first call, then caches it.
 A name that never resolves fails at call time, with the function named in the error.
 
-Nothing is resolved at import: no provider needs to be active when the module is loaded.
+Nothing is resolved at import, so no provider needs to be active when the module is loaded.
 
 .. seealso::
 

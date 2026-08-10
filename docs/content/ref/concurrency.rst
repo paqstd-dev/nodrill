@@ -15,8 +15,8 @@ wrap
    Bind ``fn`` to a snapshot of the context active when ``wrap`` was called, and return a callable with the same signature.
 
    :raises TypeError: ``fn`` is a coroutine or async-generator function.
-      Calling one only builds the coroutine; its body then resumes in the caller's context, so the snapshot would be silently dropped.
-      asyncio needs no wrapping: a task created inside a provider block snapshots the context itself.
+      Calling one only builds the coroutine, whose body then resumes in the caller's context, so the snapshot would be silently dropped.
+      asyncio needs no wrapping, since a task created inside a provider block snapshots the context itself.
 
    The snapshot is taken at ``wrap()`` time, not at call time.
    Wrapping at import time binds import-time state.

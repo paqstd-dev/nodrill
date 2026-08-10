@@ -6,7 +6,7 @@ API reference
 .. module:: nodrill
 
 Everything nodrill exports, described exactly.
-The whole public surface is nineteen names, all importable from the top-level package:
+The whole public surface is twenty-two names, all importable from the top-level package.
 
 .. code-block:: python
 
@@ -17,8 +17,11 @@ The whole public surface is nineteen names, all importable from the top-level pa
        KeyResolutionError,
        Namespace,
        NoProviderError,
+       UnusedProviderWarning,
        active,
        context,
+       debug,
+       explain,
        from_ctx,
        inject,
        injected,
@@ -42,6 +45,7 @@ Nothing under ``nodrill._*`` is public, and the module layout may change between
    concurrency
    exceptions
    testing
+   debugging
 
 .. rubric:: Version
 

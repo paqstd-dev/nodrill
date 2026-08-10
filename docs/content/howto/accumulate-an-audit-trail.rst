@@ -9,7 +9,8 @@ Middleware knows the request, authentication knows the actor, the view names the
 Each layer opens ``provider("audit", extend=True, ...)`` and adds what it knows.
 The receiver reads one name and gets everything that was contributed above it.
 
-The example is written against stand-ins for the Django pieces, so it runs as pasted; in a real project ``post_save`` is a signal receiver, ``audit_middleware`` is middleware, and ``Document`` is a model.
+The example is written against stand-ins for the Django pieces, so it runs as pasted.
+In a real project ``post_save`` is a signal receiver, ``audit_middleware`` is middleware, and ``Document`` is a model.
 
 .. code-block:: python
    :caption: audit_trail.py
@@ -91,19 +92,20 @@ Notes
 -----
 
 Every layer is spelled the same way, ``provider("audit", extend=True, ...)``, and none of them checks whether anything is open above it.
-``nightly_cleanup`` is the case that makes this matter: it runs with no middleware, no actor and no request, and it needs no branch for that.
+``nightly_cleanup`` is the case that makes this matter, running with no middleware, no actor and no request, and needing no branch for that.
 
 The receiver reads ``vars(use("audit"))`` rather than named attributes, because what accumulated depends on which layers ran.
 Where a field is genuinely required, read it as an attribute and let the :exc:`AttributeError` name the provider and list what was set.
 
 The layers do not share a namespace.
 Each ``extend=True`` copies what it found and lays its own values over the copy, so a request that hands work to a thread or a task mid-flight cannot have a later layer appear underneath it.
-The flip side is that a write made in an outer layer after an inner one was entered stays outside it; :ref:`topics-providers` has the rule in full.
+The flip side is that a write made in an outer layer after an inner one was entered stays outside it.
+:ref:`topics-providers` has the rule in full.
 
 Nothing here unwinds by hand.
 Each ``with`` block restores exactly the layer that was open before it, including when the view raises, which is the difference from an accumulating request-global such as Flask's ``g``.
 
-The receiver would work just as well with :func:`~nodrill.inject`, which fills parameters from a namespace by name:
+The receiver would work just as well with :func:`~nodrill.inject`, which fills parameters from a namespace by name.
 
 .. code-block:: python
 

@@ -14,19 +14,21 @@ def _describe_key(key: Any) -> str:
 class NoProviderError(LookupError):
     """Raised by use() when no provider is active for the requested key.
 
-    Carries the requested key and the active keys as attributes.
+    Carries the requested key, the active keys and, under debug mode, the
+    diagnosis of where the value is, as attributes.
     """
 
-    def __init__(self, key: Any, active_keys: Iterable[Any] = ()) -> None:
+    def __init__(
+        self, key: Any, active_keys: Iterable[Any] = (), diagnosis: str | None = None
+    ) -> None:
         self.key = key
         self.active_keys = tuple(active_keys)
+        self.diagnosis = diagnosis
         super().__init__(self._build_message())
 
     def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
-        # args holds the built message, so the default reconstruction would pass
-        # that message as the key.  copy and pickle have to give back the same
-        # exception, since a worker process delivers a failure by pickling it.
-        return (self.__class__, (self.key, self.active_keys))
+        # args holds the built message, which default reconstruction would pass back as the key.
+        return (self.__class__, (self.key, self.active_keys, self.diagnosis))
 
     def _build_message(self) -> str:
         wanted = _describe_key(self.key)
@@ -43,15 +45,16 @@ class NoProviderError(LookupError):
                 parts.append(f"Did you mean {close[0]!r}?")
             parts.append(f"Hint: did you forget `with provider({self.key!r})`?")
         else:
-            # A class opens its own provider.  Anything else naming one, a ref
-            # included, is a key rather than a constructor.
+            # A class opens its own provider, while anything else naming one is a key.
             opener = f"{wanted}(...)" if isinstance(self.key, type) else f"instance, key={wanted}"
             parts.append(
                 f"Hint: did you forget `with provider({opener})`? "
                 f"A fallback can be registered with "
                 f"`set_default({wanted}, ...)`."
             )
-        return " ".join(parts)
+        message = " ".join(parts)
+        # Below the message rather than instead of it, so debug mode off reads as it always did.
+        return f"{message}\n\n{self.diagnosis}" if self.diagnosis else message
 
 
 class KeyResolutionError(LookupError):
@@ -72,3 +75,7 @@ class KeyResolutionError(LookupError):
 
 class FrozenContextError(AttributeError):
     """Raised when writing to a context object provided with frozen=True."""
+
+
+class UnusedProviderWarning(UserWarning):
+    """Warned by debug(unused=True) when a block exits with nothing having read it."""

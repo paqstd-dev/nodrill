@@ -4,7 +4,8 @@ Test injected code
 ==================
 
 Injected code is testable without providers, because an argument the caller passes is never overridden.
-The production path opens providers at the composition root; the test path passes fakes and never touches ``use()``.
+The production path opens providers at the composition root.
+The test path passes fakes and never touches ``use()``.
 
 .. code-block:: python
    :caption: welcome.py
@@ -41,7 +42,7 @@ The production path opens providers at the composition root; the test path passe
        with provider(Mailer(smtp_host="smtp.prod:25")), provider(AppConfig()):
            return send_welcome("alice@example.com")
 
-The test needs neither a provider nor a patch:
+The test needs neither a provider nor a patch.
 
 .. code-block:: python
    :caption: test_welcome.py
@@ -67,9 +68,9 @@ An explicit ``None`` counts as an explicit argument and is not replaced.
 That matters when ``None`` is a meaningful value for the parameter, and it means you can test the "no mailer" branch without inventing a sentinel.
 
 Fakes need no relationship to the real class beyond the methods under test.
-The parameter is annotated for the type checker's benefit; at runtime nodrill only fills what was left out.
+The parameter is annotated for the type checker's benefit, and at runtime nodrill only fills what was left out.
 
-For code that calls ``use()`` in the body rather than taking it as a parameter, open a provider in the test:
+For code that calls ``use()`` in the body rather than taking it as a parameter, open a provider in the test.
 
 .. code-block:: python
 
@@ -77,7 +78,7 @@ For code that calls ``use()`` in the body rather than taking it as a parameter, 
        with provider(RequestScope(request_id="r-1")):
            assert audit("login").startswith("r-1")
 
-Add ``isolate()`` as an autouse fixture if the suite touches the ambient namespace, whose writes are unscoped and would otherwise carry from one test into the next:
+Add ``isolate()`` as an autouse fixture if the suite touches the ambient namespace, whose writes are unscoped and would otherwise carry from one test into the next.
 
 .. code-block:: python
    :caption: conftest.py

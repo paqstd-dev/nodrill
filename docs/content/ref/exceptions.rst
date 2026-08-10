@@ -18,14 +18,19 @@ NoProviderError
 
    .. attribute:: key
 
-      The key that was looked up: the string or the class passed to :func:`use`.
+      The key that was looked up, the string or the class passed to :func:`use`.
 
    .. attribute:: active_keys
 
       A tuple of the keys that were active at the time, in registration order.
 
+   .. attribute:: diagnosis
+
+      Why the key was not visible from here, as a string, or ``None``.
+      Set only when :func:`debug` was on for the lookup, and rendered below the message when it is.
+
    The message names the requested key, lists the active ones, and states the fix.
-   For a string key it also offers the nearest match, found with :mod:`difflib`; for a class key it mentions :func:`set_default`.
+   For a string key it also offers the nearest match, found with :mod:`difflib`, and for a class key it mentions :func:`set_default`.
 
    .. code-block:: text
 
@@ -51,7 +56,7 @@ KeyResolutionError
    Resolution happens the first time the ref is used as a key, so this is raised out of :func:`use`, :func:`provider`, :func:`set_default` or :func:`resolve_refs` rather than out of :func:`ref` itself.
    The underlying :exc:`ImportError`, where there is one, is the exception's ``__cause__``.
 
-   Three things go wrong, and each says which:
+   Three things go wrong, and each says which.
 
    .. code-block:: text
 
@@ -83,6 +88,23 @@ FrozenContextError
 
    Raised when setting or deleting an attribute on a value that was provided with ``frozen=True``.
 
-   The object the ``with`` block yields stays writable; only the view reached through :func:`use` refuses writes.
+   The object the ``with`` block yields stays writable, and only the view reached through :func:`use` refuses writes.
 
    It subclasses :exc:`AttributeError` so that ``getattr``-style guards and duck-typing checks behave as they would on any other object.
+
+UnusedProviderWarning
+---------------------
+
+.. exception:: UnusedProviderWarning
+
+   Bases: :exc:`UserWarning`
+
+   Warned by :func:`debug` with ``unused=True`` when a provider block exits and nothing read what it provided.
+
+   A category of its own, so the warning can be silenced by kind rather than by matching the text of its message.
+
+   .. code-block:: python
+
+      warnings.filterwarnings("ignore", category=nodrill.UnusedProviderWarning)
+
+   It subclasses :exc:`UserWarning`, which is what an unfiltered warning is reported as anyway, so nothing that already catches those stops seeing it.
