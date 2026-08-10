@@ -22,6 +22,12 @@ class NoProviderError(LookupError):
         self.active_keys = tuple(active_keys)
         super().__init__(self._build_message())
 
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        # args holds the built message, so the default reconstruction would pass
+        # that message as the key.  copy and pickle have to give back the same
+        # exception, since a worker process delivers a failure by pickling it.
+        return (self.__class__, (self.key, self.active_keys))
+
     def _build_message(self) -> str:
         wanted = _describe_key(self.key)
         parts = [f"use({wanted}): no active provider for {wanted}."]
@@ -36,14 +42,32 @@ class NoProviderError(LookupError):
             if close:
                 parts.append(f"Did you mean {close[0]!r}?")
             parts.append(f"Hint: did you forget `with provider({self.key!r})`?")
-        elif isinstance(self.key, type):
+        else:
+            # A class opens its own provider.  Anything else naming one, a ref
+            # included, is a key rather than a constructor.
+            opener = f"{wanted}(...)" if isinstance(self.key, type) else f"instance, key={wanted}"
             parts.append(
-                f"Hint: did you forget `with provider({wanted}(...))`? "
+                f"Hint: did you forget `with provider({opener})`? "
                 f"A fallback can be registered with "
                 f"`set_default({wanted}, ...)`."
             )
-        # Only reachable when raised by hand, since use() rejects other key kinds.
         return " ".join(parts)
+
+
+class KeyResolutionError(LookupError):
+    """Raised when a ref() key cannot be resolved to what its path names.
+
+    Carries the import path as an attribute.
+    """
+
+    def __init__(self, path: str, problem: str) -> None:
+        self.path = path
+        self._problem = problem
+        super().__init__(f"ref({path!r}): {problem}")
+
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        # Both arguments are required, and args holds only the built message.
+        return (self.__class__, (self.path, self._problem))
 
 
 class FrozenContextError(AttributeError):

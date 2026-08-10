@@ -30,6 +30,7 @@ from typing import (
 
 from ._core import _registry, _resolve_miss
 from ._errors import _describe_key
+from ._refs import _is_ref, _Key
 
 _T = TypeVar("_T")
 F = TypeVar("F", bound=Callable[..., Any])
@@ -116,10 +117,10 @@ class _FromCtxMarker:
 
     __slots__ = ("attr", "key")
 
-    def __init__(self, key: str | type[Any] | None = None, attr: str | None = None) -> None:
-        if key is not None and not isinstance(key, str | type):
+    def __init__(self, key: _Key | None = None, attr: str | None = None) -> None:
+        if key is not None and not isinstance(key, str | type) and not _is_ref(key):
             raise TypeError(
-                f"FromCtx key must be a string name or a class, got {type(key).__name__}"
+                f"FromCtx key must be a string name, a class or a ref(), got {type(key).__name__}"
             )
         self.key = key
         self.attr = attr
@@ -131,6 +132,10 @@ class _FromCtxMarker:
         return f"FromCtx({', '.join(args)})"
 
     def __class_getitem__(cls, item: Any) -> Any:
+        if _is_ref(item):
+            # A ref is not a type, so it cannot be the annotated base.  It names
+            # the key instead, which is all injection reads the annotation for.
+            return Annotated[Any, cls(item)]
         return Annotated[item, cls()]
 
 
@@ -155,7 +160,7 @@ class _Marker:
     """One parameter resolved through a FromCtx marker."""
 
     name: str
-    key: str | type[Any]
+    key: _Key
     attr: str | None
 
 
@@ -165,7 +170,7 @@ class _Plan:
 
     label: str
     markers: tuple[_Marker, ...]
-    from_key: str | type[Any] | None
+    from_key: _Key | None
     from_names: tuple[str, ...]
     from_required: frozenset[str]
 
@@ -211,13 +216,13 @@ def _marker_spec(param_name: str, base: Any, marker: _FromCtxMarker) -> _Marker:
             )
         key = base
     if isinstance(key, str) and attr is None:
+        # A ref naming a string reaches this same rule at the first call, since
+        # nothing here is allowed to import it.
         attr = param_name
     return _Marker(param_name, key, attr)
 
 
-def _build_plan(
-    func: Callable[..., Any], sig: inspect.Signature, from_key: str | type[Any] | None
-) -> _Plan:
+def _build_plan(func: Callable[..., Any], sig: inspect.Signature, from_key: _Key | None) -> _Plan:
     params = list(sig.parameters.values())
     hints: dict[str, Any] = {}
     if any(p.annotation is not inspect.Parameter.empty for p in params):
@@ -251,7 +256,7 @@ def _build_plan(
     return _Plan(func.__qualname__, tuple(markers), from_key, from_names, from_required)
 
 
-def _unmet_error(label: str, from_key: str | type[Any], unmet: list[str]) -> TypeError:
+def _unmet_error(label: str, from_key: _Key, unmet: list[str]) -> TypeError:
     """Build the error for required by-name parameters the context could not fill."""
     names = ", ".join(repr(n) for n in unmet)
     return TypeError(
@@ -404,22 +409,42 @@ def _resolve_lines(target: str, key: str, ns: _WrapperSpace, indent: str) -> lis
     ]
 
 
+def _ref_attr(key: Any, value: Any, name: str) -> Any:
+    """Return the attribute a string key implies, or the value itself.
+
+    A string key hands over a namespace and the parameter names the attribute
+    to read from it, while a class key hands over the instance.  Which of the
+    two a ref is becomes known only when it resolves, so the choice waits for
+    the call the way the lookup does.
+    """
+    return getattr(value, name) if isinstance(key.resolve(), str) else value
+
+
+def _marker_fill(marker: _Marker, key: str, ns: _WrapperSpace) -> str | None:
+    """Render what turns the resolved value into the argument, if anything."""
+    if marker.attr is None:
+        if not _is_ref(marker.key):
+            return None
+        ns.bind("ref_attr", _ref_attr)
+        return f"{ns.ref_attr}({key}, {ns.value}, {marker.name!r})"
+    if marker.attr.isidentifier() and not keyword.iskeyword(marker.attr):
+        return f"{ns.value}.{marker.attr}"
+    attr = ns.bind(f"attr_{marker.name}", marker.attr)
+    ns.bind("getattr", getattr)
+    return f"{ns.getattr}({ns.value}, {attr})"
+
+
 def _marker_lines(markers: tuple[_Marker, ...], ns: _WrapperSpace) -> list[str]:
     """Render the resolution block of each marker parameter."""
     lines: list[str] = []
     for marker in markers:
         key = ns.bind(f"key_{marker.name}", marker.key)
-        target = marker.name if marker.attr is None else ns.value
+        fill = _marker_fill(marker, key, ns)
+        target = marker.name if fill is None else ns.value
         lines.append(f"if {marker.name} is {ns.injected}:")
         lines += _resolve_lines(target, key, ns, "    ")
-        if marker.attr is None:
-            continue
-        if marker.attr.isidentifier() and not keyword.iskeyword(marker.attr):
-            lines.append(f"    {marker.name} = {ns.value}.{marker.attr}")
-        else:
-            attr = ns.bind(f"attr_{marker.name}", marker.attr)
-            ns.bind("getattr", getattr)
-            lines.append(f"    {marker.name} = {ns.getattr}({ns.value}, {attr})")
+        if fill is not None:
+            lines.append(f"    {marker.name} = {fill}")
     return lines
 
 
@@ -555,7 +580,7 @@ def _register_source(filename: str, source: str) -> None:
 
 
 def _make_deferred(
-    func: Callable[..., Any], sig: inspect.Signature, from_key: str | type[Any] | None
+    func: Callable[..., Any], sig: inspect.Signature, from_key: _Key | None
 ) -> Callable[..., Any]:
     """Wrap func so the plan builds and compiles on the first call.
 
@@ -613,7 +638,7 @@ def _mentions_marker(func: Callable[..., Any]) -> bool:
     )
 
 
-def _decorate(obj: Any, from_key: str | type[Any] | None) -> Any:
+def _decorate(obj: Any, from_key: _Key | None) -> Any:
     if isinstance(obj, staticmethod):
         return staticmethod(_decorate(obj.__func__, from_key))
     if isinstance(obj, classmethod):
@@ -650,7 +675,7 @@ def _decorate(obj: Any, from_key: str | type[Any] | None) -> Any:
 def inject(func: F, /) -> F: ...
 @overload
 def inject(*, from_: str | type[Any] = ...) -> Callable[[F], F]: ...
-def inject(func: Any = None, /, *, from_: str | type[Any] | None = None) -> Any:
+def inject(func: Any = None, /, *, from_: _Key | None = None) -> Any:
     """Fill missing parameters from the current context at call time.
 
     Marker style annotates parameters with FromCtx or from_ctx.  Name style,
@@ -663,8 +688,10 @@ def inject(func: Any = None, /, *, from_: str | type[Any] | None = None) -> Any:
     rejected, because their bodies run after the call, possibly under
     different providers.
     """
-    if from_ is not None and not isinstance(from_, str | type):
-        raise TypeError(f"from_ must be a string name or a class, got {type(from_).__name__}")
+    if from_ is not None and not isinstance(from_, str | type) and not _is_ref(from_):
+        raise TypeError(
+            f"from_ must be a string name, a class or a ref(), got {type(from_).__name__}"
+        )
     if func is None:
         return lambda f: _decorate(f, from_)
     return _decorate(func, from_)

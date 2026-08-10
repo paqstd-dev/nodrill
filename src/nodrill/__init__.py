@@ -8,9 +8,10 @@ contextvars, so lookups are thread-safe and asyncio-task-safe.
 from ._ambient import context
 from ._concurrency import Executor, wrap
 from ._core import Namespace, active, isolate, provider, set_default, use
-from ._errors import FrozenContextError, NoProviderError
+from ._errors import FrozenContextError, KeyResolutionError, NoProviderError
 from ._inject import FromCtx, from_ctx, inject, injected
 from ._lazy import lazy
+from ._refs import ref, resolve_refs
 
 __version__ = "0.1.0"
 
@@ -18,6 +19,7 @@ __all__ = [
     "Executor",
     "FromCtx",
     "FrozenContextError",
+    "KeyResolutionError",
     "Namespace",
     "NoProviderError",
     "__version__",
@@ -29,6 +31,8 @@ __all__ = [
     "isolate",
     "lazy",
     "provider",
+    "ref",
+    "resolve_refs",
     "set_default",
     "use",
     "wrap",

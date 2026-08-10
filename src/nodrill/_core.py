@@ -17,6 +17,7 @@ from ._ambient import _ambient
 from ._errors import NoProviderError, _describe_key
 from ._frozen import _FrozenProxy
 from ._lazy import _is_lazy, _Lazy, _LazyCell, _Resolution
+from ._refs import _is_ref, _key_target, _restore, _snapshot
 
 T = TypeVar("T")
 D = TypeVar("D")
@@ -315,16 +316,24 @@ def _target_of(args: tuple[Any, ...], values: dict[str, Any]) -> Any:
 def _instance_key(target: Any, key: Any) -> str | type[Any]:
     """Return the registry key for an instance provider.
 
-    Typed loosely on purpose: this is where a key of the wrong kind is
-    caught, so the annotation cannot rule one out first.
+    A ref() key resolves here, so the registry only ever holds a class or a
+    name.  Typed loosely on purpose, since this is where a key of the wrong
+    kind is caught and the annotation cannot rule one out first.
     """
     if isinstance(target, type):
         raise TypeError(
             f"provider() takes an instance, not a class. "
             f"Did you mean provider({target.__name__}(...))?"
         )
+    if _is_ref(target):
+        # Described rather than resolved, so a bad path is not reported as a bad call.
+        raise TypeError(
+            f"provider() takes an instance, not a key. {target!r} names the class to "
+            f"register under: pass the value, as provider(instance, key={target!r})"
+        )
     if key is None:
         return type(target)
+    key = _key_target(key)
     if isinstance(key, _KEY_TYPES):
         return key
     if _is_lazy(key):
@@ -367,19 +376,23 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
     Validates the key kind, tries the set_default() factory, then the
     caller's default, then raises.  Split out of use() so compiled @inject
     wrappers can take the miss path without re-reading the registry.
+
+    A ref that got this far already resolved, on the hash the lookup took, so
+    reading its target costs nothing and every rule below is written once.
     """
-    if not isinstance(key, _KEY_TYPES):
-        if _is_lazy(key):
-            name = _describe_key(key.key)
+    target = _key_target(key)
+    if not isinstance(target, _KEY_TYPES):
+        if _is_lazy(target):
+            name = _describe_key(target.key)
             raise TypeError(
                 f"use() received what lazy() returned, which is a target rather than a key. "
                 f"Open it with provider(lazy({name}, factory)) and read it with use({name})"
             )
         raise TypeError(
-            f"use() expects a string name or a class, got {type(key).__name__}: {key!r}"
+            f"use() expects a string name or a class, got {type(target).__name__}: {target!r}"
         )
-    if isinstance(key, type):
-        factory = _defaults.get(key)
+    if isinstance(target, type):
+        factory = _defaults.get(target)
         if factory is not None:
             return factory()
     if default is not _MISSING:
@@ -400,10 +413,12 @@ def set_default(cls: type[T], factory: Callable[[], T] | None) -> type[T]:
     """Register a fallback factory for use(cls) outside any provider.
 
     The factory runs on every miss (a fresh instance each time, never a
-    cached singleton).  None removes the registration.
+    cached singleton).  None removes the registration.  A ref() resolves on
+    the spot, since the table is keyed by class, and the class comes back.
     """
-    if not isinstance(cls, type):
-        raise TypeError(f"set_default() registers classes, got {type(cls).__name__}: {cls!r}")
+    key = _key_target(cls)
+    if not isinstance(key, type):
+        raise TypeError(f"set_default() registers classes, got {type(key).__name__}: {key!r}")
     # Ahead of the chain below, which a narrowing type checker calls dead code once
     # callable() has run.
     if _is_lazy(factory):
@@ -413,12 +428,12 @@ def set_default(cls: type[T], factory: Callable[[], T] | None) -> type[T]:
             "pass it to provider() instead"
         )
     if factory is None:
-        _defaults.pop(cls, None)
+        _defaults.pop(key, None)
     elif callable(factory):
-        _defaults[cls] = factory
+        _defaults[key] = factory
     else:
         raise TypeError(f"factory must be callable or None, got {type(factory).__name__}")
-    return cls
+    return key
 
 
 @contextmanager
@@ -426,14 +441,20 @@ def isolate() -> Iterator[None]:
     """Run a block against fresh context state, restoring the outer state on exit.
 
     Providers and ambient attributes start empty.  Any set_default()
-    registration made inside is rolled back.  Meant for test fixtures.
+    registration made inside is rolled back, and so is any ref() the block
+    itself created, which is what keeps one test's broken path out of another
+    test's resolve_refs().  A ref a module made while the block imported it
+    belongs to that module and stays, since the module does.  Meant for test
+    fixtures.
     """
     registry_token = _registry.set({})
     ambient_token = _ambient.set({})
     saved_defaults = dict(_defaults)
+    saved_refs = _snapshot()
     try:
         yield
     finally:
+        _restore(saved_refs)
         _defaults.clear()
         _defaults.update(saved_defaults)
         _ambient.reset(ambient_token)

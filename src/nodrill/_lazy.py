@@ -28,6 +28,7 @@ from typing import Any, SupportsIndex, TypeVar, cast
 
 from ._errors import _describe_key
 from ._frozen import _FORWARDED, _INVOKED, _REFLECTED, _FrozenProxy
+from ._refs import _key_target
 
 T = TypeVar("T")
 
@@ -282,8 +283,10 @@ def lazy(key: type[Any], factory: Callable[[], T], /) -> T:
     Pass the result to provider().  The factory runs on the first read inside
     the scope, under the context that scope was entered with, and its result
     is cached until the scope exits.  The key is given explicitly, since
-    there is no value to derive it from yet.
+    there is no value to derive it from yet.  A ref() resolves here, so the
+    carrier holds the class the provider will register.
     """
+    key = _key_target(key)
     if isinstance(key, str):
         raise TypeError(
             "lazy() takes a class as its key. A string-named provider fills its Namespace "

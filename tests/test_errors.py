@@ -1,10 +1,12 @@
+import copy
+import pickle
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
 
-from nodrill import NoProviderError, provider, set_default, use
+from nodrill import KeyResolutionError, NoProviderError, provider, set_default, use
 
 
 @dataclass
@@ -66,6 +68,31 @@ class TestNoProvider:
     def test_use_rejects_non_key_types(self) -> None:
         with pytest.raises(TypeError, match="string name or a class"):
             use(42)  # type: ignore[call-overload]
+
+
+class TestErrorsSurviveATrip:
+    """A worker process delivers a failure by pickling it, so both errors have to survive that."""
+
+    def test_no_provider_error_pickles_back_to_itself(self) -> None:
+        original = NoProviderError("database", ("app", Settings))
+        restored = pickle.loads(pickle.dumps(original))
+        assert restored.key == "database"
+        assert restored.active_keys == ("app", Settings)
+        assert str(restored) == str(original)
+
+    def test_no_provider_error_copies_back_to_itself(self) -> None:
+        original = NoProviderError("database")
+        assert copy.copy(original).key == "database"
+
+    def test_key_resolution_error_pickles_back_to_itself(self) -> None:
+        original = KeyResolutionError("myapp.context:Scope", "cannot import 'myapp.context'")
+        restored = pickle.loads(pickle.dumps(original))
+        assert restored.path == "myapp.context:Scope"
+        assert str(restored) == str(original)
+
+    def test_key_resolution_error_copies_back_to_itself(self) -> None:
+        original = KeyResolutionError("myapp.context:Scope", "no such attribute")
+        assert str(copy.copy(original)) == str(original)
 
 
 class TestSetDefault:

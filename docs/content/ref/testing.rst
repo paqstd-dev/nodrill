@@ -57,6 +57,7 @@ isolate
 
    Inside the block no providers are active and the ambient namespace is empty.
    Registrations made with :func:`set_default` inside the block are rolled back on exit; registrations made outside stay visible inside, since they are configuration rather than state.
+   Refs built with :func:`ref` inside the block are rolled back the same way, so a path one test made up on purpose is not a path the next test's :func:`resolve_refs` has to import.
 
    Intended for test fixtures:
 

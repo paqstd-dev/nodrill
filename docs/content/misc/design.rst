@@ -152,6 +152,46 @@ It describes what the caller ends up holding, since ``provider()`` turns the car
 
 The name takes the key first, since ``lazy(factory, key=Origin)`` puts the interesting word last, and string keys are refused because a string-named provider has nothing to defer.
 
+ref borrows an identity instead of branching in use()
+-----------------------------------------------------
+
+``ref("myapp.context:RequestScope")`` is a late-bound name for a class key, for the case where the module that owns the key imports the module that reads it.
+
+The obvious implementation is one line in ``use()``::
+
+   if type(key) is _Ref:
+       key = key.target
+
+It reads better and taxes every lookup in every program that never names a key this way, on the path this project has optimised hardest, and it would have to be repeated in the compiled ``@inject`` wrappers, which do their own registry read.
+
+So a ref borrows its target's identity rather than being a key of its own, with ``__hash__`` the target's hash and ``__eq__`` answering true for the target.
+A ``dict`` lookup hashes the ref into the slot the class occupies, compares the stored class against it, gets ``NotImplemented`` from ``type.__eq__`` and falls through to the reflected ``_Ref.__eq__``.
+The entry is found with no branch anywhere, so ``use()`` is untouched, the generated wrappers are untouched, and the cost is one Python-level hash and one equality call, paid by the lookups that go through a ref and by nothing else.
+Equality follows the hash, so it is identity for a class, whose hash is its identity, and value for a name, whose hash is its value and which two modules can hold as two equal objects.
+Both lookup orders were verified against CPython before the design was accepted, so it does not depend on which side of the comparison the ``dict`` puts first.
+
+Resolution caches the object rather than the path, which is what makes two paths to one class collapse into one key, and what makes a :func:`importlib.reload` invisible to a ref that already resolved.
+The second is the staleness a ``from ... import`` has anywhere in Python, and it is worth a sentence in the reference rather than a re-walk on every lookup.
+
+The provider side resolves eagerly instead, in ``_instance_key()``, ``lazy()`` and ``set_default()``, all of which are cold.
+The registry therefore never holds a ref, so keys stay exactly ``str`` or ``type``, ``active()`` shows classes, and the exact-keys invariant is untouched, a ref being a late-bound name for one existing key rather than a new kind of key.
+Only the consumer side is deferred, which is the side with the import problem.
+
+Resolution runs without a lock.
+It is deterministic and idempotent — :func:`~importlib.import_module` caches and the attribute walk is pure — so a racing second walk costs a walk and both threads arrive at the one object the module holds.
+The alternative, a lock held across an import, orders this library's lock against the interpreter's own per-module import locks, in the opposite direction from a module body that resolves a ref while it is being imported.
+That is a deadlock, and the same reasoning is why CPython dropped its global import lock.
+A failure is not cached either, unlike a ``lazy`` factory's, because a path that fails inside an import cycle is a path that resolves normally once the cycle unwinds.
+
+The dotted spelling resolves from the longest importable prefix, the way :mod:`pydoc`'s ``locate`` reads a name, and stops at the first prefix that imports rather than continuing to shorter ones, so ``a.b.c`` reports what is wrong with ``a.b`` instead of quietly reporting something about ``a``.
+A prefix that is simply not a module is skipped.
+An :exc:`ImportError` from inside a module's own body is not, since that would be a real failure mistaken for a path one component too long.
+The colon form is canonical for exactly that reason, since it says where the module ends and needs no rule.
+
+A bare dotted string as a key was rejected.
+``use("myapp.context:RequestScope")`` cannot be told from a string namespace of that name, and guessing by looking for a dot would make a namespace called ``app.v2`` an import path.
+``ref()`` costs six characters and removes the guess.
+
 @inject mechanics
 -----------------
 
@@ -227,6 +267,10 @@ Errors
 ------
 
 ``NoProviderError`` subclasses :exc:`LookupError` and carries the requested key and active keys; the message lists active providers, suggests close string matches via :mod:`difflib`, and hints at the fix for each key kind.
+A key that is neither a string nor a class is a ref, which describes itself as the ``ref('...')`` call that made it and is hinted at as a key rather than as a constructor.
+Describing one never resolves it, since an error path is the last place that should be importing.
+
+``KeyResolutionError`` subclasses :exc:`LookupError` too, so ``except LookupError`` still catches everything a lookup raises, and carries the path.
 
 Namespaces remember which provider created them and say so in attribute errors, which matters once several named providers are active.
 The name lives in a private slot, mangled to ``_Namespace__label``, so it stays out of ``__dict__`` and cannot collide with a value; a weak side table did the same job before, at the cost of a weakref per named provider and a hashable ``Namespace``.
@@ -249,3 +293,7 @@ isolate()
 The test suite needs fresh context state per test, and so does every downstream suite; without a public helper, each of them would reach into private module state.
 
 ``isolate()`` is that fixture body: providers and ambient state start empty inside the block, default registrations are rolled back on exit, and pre-existing defaults stay visible because they are configuration, not state.
+Refs the block itself created are rolled back for the same reason, and for one more.
+``resolve_refs()`` walks every ref ever created, so without the rollback a test that builds a deliberately broken path would fail whichever other test calls it next.
+A ref made while a module was running its own body is the exception, and is kept.
+It belongs to the module holding it, the module stays imported after the block, and forgetting it would leave ``resolve_refs()`` reporting success over a path nothing checks again.
