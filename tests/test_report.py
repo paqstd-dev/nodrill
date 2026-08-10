@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 import warnings
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from typing import Any
@@ -199,6 +199,38 @@ def test_a_base_exception_passes_through_untouched() -> None:
     with pytest.raises(KeyboardInterrupt), provider(RequestScope(1, "acme"), annotate=True):
         raise err
     assert notes(err) == []
+
+
+def test_a_closed_generator_carries_no_notes() -> None:
+    seen: list[BaseException] = []
+
+    def holding() -> Generator[int, None, None]:
+        with provider("app", tag="a", annotate=True):
+            try:
+                yield 1
+            except GeneratorExit as exc:
+                seen.append(exc)
+                raise
+
+    generator = holding()
+    next(generator)
+    generator.close()
+    assert notes(seen[0]) == []
+
+
+def test_a_clean_exit_carries_no_notes() -> None:
+    err = SystemExit(0)
+    with pytest.raises(SystemExit), provider("app", tag="a", annotate=True):
+        raise err
+    assert notes(err) == []
+
+
+def test_isolate_does_not_reset_the_switch() -> None:
+    err = ValueError("boom")
+    with annotating(), nodrill.isolate():
+        with pytest.raises(ValueError, match="boom"), provider("app", tag="a"):
+            raise err
+    assert notes(err) == expected("Namespace('app', tag='a')")
 
 
 async def test_a_cancelled_task_carries_no_notes() -> None:

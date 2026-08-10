@@ -6,6 +6,9 @@ import difflib
 from collections.abc import Iterable
 from typing import Any
 
+# What the registry is keyed by, once a ref() has resolved to the class it names.
+_Key = str | type[Any]
+
 
 def _describe_key(key: Any) -> str:
     return repr(key) if isinstance(key, str) else getattr(key, "__qualname__", repr(key))

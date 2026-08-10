@@ -22,9 +22,8 @@ from types import TracebackType
 from typing import Any, NamedTuple
 from weakref import WeakKeyDictionary
 
-from ._errors import UnusedProviderWarning, _describe_key
+from ._errors import UnusedProviderWarning, _describe_key, _Key
 
-_Key = str | type[Any]
 _Registry = dict[_Key, Any]
 
 # Skipped when naming a site, so an ExitStack or _LazyProvider entry names the user's line.

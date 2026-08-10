@@ -30,7 +30,7 @@ from typing import (
 
 from ._core import _registry, _resolve_miss
 from ._errors import _describe_key
-from ._refs import _is_ref, _Key
+from ._refs import _is_ref, _KeyArg
 
 _T = TypeVar("_T")
 F = TypeVar("F", bound=Callable[..., Any])
@@ -120,7 +120,7 @@ class _FromCtxMarker:
 
     __slots__ = ("attr", "key")
 
-    def __init__(self, key: _Key | None = None, attr: str | None = None) -> None:
+    def __init__(self, key: _KeyArg | None = None, attr: str | None = None) -> None:
         if key is not None and not isinstance(key, str | type) and not _is_ref(key):
             raise TypeError(
                 f"FromCtx key must be a string name, a class or a ref(), got {type(key).__name__}"
@@ -162,7 +162,7 @@ class _Marker:
     """One parameter resolved through a FromCtx marker."""
 
     name: str
-    key: _Key
+    key: _KeyArg
     attr: str | None
 
 
@@ -172,7 +172,7 @@ class _Plan:
 
     label: str
     markers: tuple[_Marker, ...]
-    from_key: _Key | None
+    from_key: _KeyArg | None
     from_names: tuple[str, ...]
     from_required: frozenset[str]
 
@@ -223,7 +223,9 @@ def _marker_spec(param_name: str, base: Any, marker: _FromCtxMarker) -> _Marker:
     return _Marker(param_name, key, attr)
 
 
-def _build_plan(func: Callable[..., Any], sig: inspect.Signature, from_key: _Key | None) -> _Plan:
+def _build_plan(
+    func: Callable[..., Any], sig: inspect.Signature, from_key: _KeyArg | None
+) -> _Plan:
     params = list(sig.parameters.values())
     hints: dict[str, Any] = {}
     if any(p.annotation is not inspect.Parameter.empty for p in params):
@@ -257,7 +259,7 @@ def _build_plan(func: Callable[..., Any], sig: inspect.Signature, from_key: _Key
     return _Plan(func.__qualname__, tuple(markers), from_key, from_names, from_required)
 
 
-def _unmet_error(label: str, from_key: _Key, unmet: list[str]) -> TypeError:
+def _unmet_error(label: str, from_key: _KeyArg, unmet: list[str]) -> TypeError:
     """Build the error for required by-name parameters the context could not fill."""
     names = ", ".join(repr(n) for n in unmet)
     return TypeError(
@@ -578,7 +580,7 @@ def _register_source(filename: str, source: str) -> None:
 
 
 def _make_deferred(
-    func: Callable[..., Any], sig: inspect.Signature, from_key: _Key | None
+    func: Callable[..., Any], sig: inspect.Signature, from_key: _KeyArg | None
 ) -> Callable[..., Any]:
     """Wrap func so the plan builds and compiles on the first call.
 
@@ -636,7 +638,7 @@ def _mentions_marker(func: Callable[..., Any]) -> bool:
     )
 
 
-def _decorate(obj: Any, from_key: _Key | None) -> Any:
+def _decorate(obj: Any, from_key: _KeyArg | None) -> Any:
     if isinstance(obj, staticmethod):
         return staticmethod(_decorate(obj.__func__, from_key))
     if isinstance(obj, classmethod):
@@ -673,7 +675,7 @@ def _decorate(obj: Any, from_key: _Key | None) -> Any:
 def inject(func: F, /) -> F: ...
 @overload
 def inject(*, from_: str | type[Any] = ...) -> Callable[[F], F]: ...
-def inject(func: Any = None, /, *, from_: _Key | None = None) -> Any:
+def inject(func: Any = None, /, *, from_: _KeyArg | None = None) -> Any:
     """Fill missing parameters from the current context at call time.
 
     Marker style annotates parameters with FromCtx or from_ctx.  Name style,

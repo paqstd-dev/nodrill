@@ -22,9 +22,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from typing import Any
 
-from ._errors import _describe_key
-
-_Key = str | type[Any]
+from ._errors import _describe_key, _Key
 
 # The string a log aggregator greps for, so it is a contract rather than a wording.
 _PREFIX = "nodrill scope: "
