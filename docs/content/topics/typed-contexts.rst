@@ -96,7 +96,8 @@ Late-bound keys
 ---------------
 
 A class key has to be imported to be named, and the module that owns the key is usually upstream of the module that reads it.
-Importing back is a cycle, which is where :func:`~nodrill.ref` comes in: it names the key by import path and imports it the first time the key is used.
+Importing back is a cycle, which is where :func:`~nodrill.ref` comes in.
+It names the key by import path and imports it the first time the key is used.
 
 .. code-block:: python
 
@@ -108,10 +109,12 @@ Importing back is a cycle, which is where :func:`~nodrill.ref` comes in: it name
        scope = use(RequestScope)       # myapp.context is imported here, once
 
 Nothing is imported at module level, so the cycle never forms.
-The colon says where the module ends; ``ref("myapp.context.RequestScope")`` is accepted too and resolved from the longest importable prefix.
+The colon says where the module ends.
+``ref("myapp.context.RequestScope")`` is accepted too, resolved from the longest importable prefix.
 
 A ref is not a second kind of key.
-Once it resolves it borrows the target's identity, so a ref and the class it names are one key in one registry entry: ``use(ref(...))`` finds what ``provider(instance)`` stored under the class, and ``provider(instance, key=ref(...))`` answers ``use(TheClass)``.
+Once it resolves it borrows the target's identity, so a ref and the class it names are one key in one registry entry.
+``use(ref(...))`` finds what ``provider(instance)`` stored under the class, and ``provider(instance, key=ref(...))`` answers ``use(TheClass)``.
 Providers resolve the ref immediately, so the registry only ever holds the class and :func:`~nodrill.active` shows it.
 
 The typed spelling is the one :data:`~nodrill.FromCtx` already uses, two names for one thing:
@@ -127,7 +130,7 @@ The typed spelling is the one :data:`~nodrill.FromCtx` already uses, two names f
 
    use(RequestScope)                   # the checker sees the class, the runtime the ref
 
-The checker follows the import and types ``use(RequestScope)`` as ``RequestScope``; the runtime never runs it.
+The checker follows the import and types ``use(RequestScope)`` as ``RequestScope``, and the runtime never runs it.
 Both spellings appear in :ref:`howto-refer-to-a-key-you-cannot-import`, along with what the resolution errors look like.
 
 Several contexts at once

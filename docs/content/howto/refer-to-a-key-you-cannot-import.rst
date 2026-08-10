@@ -10,7 +10,7 @@ When the module that owns the key already imports the module that wants to read 
 The cycle
 ---------
 
-Django is the usual shape: the context module builds the scope out of the models, and a model wants to read that scope.
+Django is the usual shape, where the context module builds the scope out of the models and a model wants to read that scope.
 
 .. code-block:: python
    :caption: myapp/context.py
@@ -33,7 +33,7 @@ Django is the usual shape: the context module builds the scope out of the models
        actor = use(RequestScope).user_id
 
 Importing ``myapp.context`` runs ``myapp.models``, which imports ``myapp.context`` again while it is half-built, and the class does not exist yet.
-Nothing about nodrill causes this, and nothing about nodrill can be rearranged to avoid it: the two modules genuinely need each other.
+Nothing about nodrill causes this, and nothing about nodrill can be rearranged to avoid it, because the two modules genuinely need each other.
 
 Name the key instead
 --------------------
@@ -50,7 +50,8 @@ Name the key instead
        actor = use(RequestScope).user_id
 
 The import happens the first time ``on_save`` runs, which is after both modules are loaded, so the cycle never forms.
-The colon says where the module ends and the attribute begins; ``ref("myapp.context.RequestScope")`` works too and resolves from the longest importable prefix.
+The colon says where the module ends and the attribute begins.
+``ref("myapp.context.RequestScope")`` works too, resolved from the longest importable prefix.
 
 Nothing else changes.
 The provider side stays exactly what it was, because a ref and the class it names are one key:
@@ -90,7 +91,7 @@ Give it the import it can follow and give the runtime the one it cannot:
    def on_save(sender, instance, **kwargs) -> int:
        return use(RequestScope).user_id     # inferred: int
 
-mypy and pyright both read the ``TYPE_CHECKING`` branch and type ``use(RequestScope)`` as ``RequestScope``; the runtime only ever runs the ``else``.
+mypy and pyright both read the ``TYPE_CHECKING`` branch and type ``use(RequestScope)`` as ``RequestScope``, while the runtime only ever runs the ``else``.
 It is the same trade :data:`~nodrill.FromCtx` makes, and it works the same way in a signature:
 
 .. code-block:: python
@@ -134,10 +135,12 @@ Reading one at module scope, inside the very import that is still running, fails
 
    KeyResolutionError: ref('myapp.context:RequestScope'): 'myapp.context' is still
    executing its own import, so 'RequestScope' does not exist yet. The lookup ran
-   during that import: move it inside a function, so it runs once the module is loaded
+   during that import, so move it inside a function and it will run once the module
+   is loaded
 
-The fix is in the last clause.
-A lookup belongs in a function body, where it runs per request; a lookup at module scope runs once, at import time, which is the one moment the value it wants cannot be there.
+The fix is the last clause.
+A lookup belongs in a function body, where it runs per request.
+At module scope it runs once, at import time, which is the one moment the value it wants cannot be there.
 
 .. seealso::
 

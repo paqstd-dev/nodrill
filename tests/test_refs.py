@@ -1,4 +1,4 @@
-"""ref() keys: the borrowed identity, the places one is accepted, and resolution failures."""
+"""The borrowed identity of a ref() key, where one is accepted, and how resolution fails."""
 
 import gc
 import importlib
@@ -33,7 +33,7 @@ def distinct(text: str) -> str:
     return text.upper().lower()
 
 
-# The name a provider is opened under, and the same name as the module holds it.
+# Two module attributes holding one name, which two refs then have to agree on.
 NAME = distinct("request_scope")
 OTHER_NAME = distinct("request_scope")
 
@@ -79,7 +79,7 @@ class TestBorrowedIdentity:
         assert config_ref() != "Config"
 
     def test_a_named_key_compares_by_value(self) -> None:
-        # The module attribute and the registry key are equal strings, not one object.
+        # The provider is opened under a name equal to the module's, not the same object.
         key = distinct("request_scope")
         assert key is not NAME
         with provider(Config(dsn="named"), key=key):

@@ -133,8 +133,8 @@ class _FromCtxMarker:
 
     def __class_getitem__(cls, item: Any) -> Any:
         if _is_ref(item):
-            # A ref is not a type, so it cannot be the annotated base; it names the key
-            # instead, which is the only part of the annotation injection reads.
+            # A ref is not a type, so it cannot be the annotated base.  It names
+            # the key instead, which is all injection reads the annotation for.
             return Annotated[Any, cls(item)]
         return Annotated[item, cls()]
 

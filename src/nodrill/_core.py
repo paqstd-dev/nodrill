@@ -317,8 +317,8 @@ def _instance_key(target: Any, key: Any) -> str | type[Any]:
     """Return the registry key for an instance provider.
 
     A ref() key resolves here, so the registry only ever holds a class or a
-    name.  Typed loosely on purpose: this is where a key of the wrong kind is
-    caught, so the annotation cannot rule one out first.
+    name.  Typed loosely on purpose, since this is where a key of the wrong
+    kind is caught and the annotation cannot rule one out first.
     """
     if isinstance(target, type):
         raise TypeError(

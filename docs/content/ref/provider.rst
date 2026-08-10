@@ -238,9 +238,11 @@ ref
           scope = use(RequestScope)
 
    The result goes wherever a class key goes: :func:`use`, ``provider(instance, key=...)``, :func:`lazy`, :func:`set_default`, :func:`from_ctx` and ``@inject(from_=...)``.
-   It is a key and not a value, so ``provider(ref(...))`` raises: the instance is what a provider takes, and the ref names what to register it under.
+   It is a key and not a value, so ``provider(ref(...))`` raises.
+   The instance is what a provider takes, and the ref names what to register it under.
    A path naming a string constant works as well and answers the name that string holds, compared by value the way any string key is.
-   A ref borrows its target's identity once it resolves, so it is not a second kind of key: ``use(ref(...))`` finds the entry a plain ``provider(instance)`` stored under the class, and a provider opened with ``key=ref(...)`` answers ``use(TheClass)``.
+   A ref borrows its target's identity once it resolves, so it is not a second kind of key.
+   ``use(ref(...))`` finds the entry a plain ``provider(instance)`` stored under the class, and a provider opened with ``key=ref(...)`` answers ``use(TheClass)``.
    Two refs to one target are equal and hash equal, so a dict keyed by refs behaves as the registry does.
 
    The provider side resolves immediately, at the ``provider()``, :func:`lazy` or :func:`set_default` call, so the registry only ever holds a class and :func:`active` shows one.
@@ -261,10 +263,11 @@ ref
 
    Hashing a ref resolves it, since the hash is the target's.
    Putting one in a set or a dict therefore imports, and so does comparing one to anything.
-   A resolution failure is not cached: a path that failed inside an import cycle resolves normally once that import completes.
+   A resolution failure is not cached, so a path that failed inside an import cycle resolves normally once that import completes.
 
    ``use(ref(...), default=...)`` does not cover a broken path.
-   The default answers a missing provider; a path that cannot be imported raises :exc:`KeyResolutionError` before any lookup happens.
+   The default answers a missing provider.
+   A path that cannot be imported raises :exc:`KeyResolutionError` before any lookup happens.
 
 resolve_refs
 ------------
@@ -275,7 +278,8 @@ resolve_refs
 
    :raises KeyResolutionError: Any ref cannot be resolved.
 
-   For an application that would rather fail at startup than on its first request; in Django that call belongs in ``AppConfig.ready()``.
+   For an application that would rather fail at startup than on its first request.
+   In Django that call belongs in ``AppConfig.ready()``.
    Refs that already resolved are left alone, so a second call costs one read each, and refs no longer referenced anywhere are forgotten rather than resolved.
 
    :func:`isolate` rolls back the refs created inside its block, the way it rolls back :func:`set_default` registrations, so one test's deliberately broken path is not another test's startup failure.
@@ -289,7 +293,7 @@ set_default
    Returns ``cls``.
 
    :param cls: The class used as the lookup key, or a :func:`ref` naming one.
-      A ref resolves here and the class is what comes back, since the table is keyed by class: this is the one call that is not deferred.
+      A ref resolves here and the class is what comes back, since the table is keyed by class, and this is the one call that is not deferred.
    :param factory: A zero-argument callable returning an instance, or ``None`` to remove an existing registration.
    :raises TypeError: ``cls`` is not a class, or ``factory`` is neither callable nor ``None``.
 

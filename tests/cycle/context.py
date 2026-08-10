@@ -1,4 +1,4 @@
-"""The upstream half: it defines the key and imports the module that reads it."""
+"""The upstream half, which defines the key and imports the module that reads it."""
 
 from dataclasses import dataclass
 

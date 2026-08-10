@@ -164,24 +164,26 @@ The obvious implementation is one line in ``use()``::
 
 It reads better and taxes every lookup in every program that never names a key this way, on the path this project has optimised hardest, and it would have to be repeated in the compiled ``@inject`` wrappers, which do their own registry read.
 
-So a ref borrows its target's identity rather than being a key of its own: ``__hash__`` is the target's hash and ``__eq__`` answers true for the target.
+So a ref borrows its target's identity rather than being a key of its own, with ``__hash__`` the target's hash and ``__eq__`` answering true for the target.
 A ``dict`` lookup hashes the ref into the slot the class occupies, compares the stored class against it, gets ``NotImplemented`` from ``type.__eq__`` and falls through to the reflected ``_Ref.__eq__``.
-The entry is found with no branch anywhere: ``use()`` is untouched, the generated wrappers are untouched, and the cost is one Python-level hash and one equality call, paid by the lookups that go through a ref and by nothing else.
-Equality follows the hash: identity for a class, whose hash is its identity, and value for a name, whose hash is its value and which two modules can hold as two equal objects.
+The entry is found with no branch anywhere, so ``use()`` is untouched, the generated wrappers are untouched, and the cost is one Python-level hash and one equality call, paid by the lookups that go through a ref and by nothing else.
+Equality follows the hash, so it is identity for a class, whose hash is its identity, and value for a name, whose hash is its value and which two modules can hold as two equal objects.
 Both lookup orders were verified against CPython before the design was accepted, so it does not depend on which side of the comparison the ``dict`` puts first.
 
 The provider side resolves eagerly instead, in ``_instance_key()``, ``lazy()`` and ``set_default()``, all of which are cold.
-The registry therefore never holds a ref: keys stay exactly ``str`` or ``type``, ``active()`` shows classes, and the exact-keys invariant is untouched, since a ref is a late-bound name for one existing key rather than a new kind of key.
+The registry therefore never holds a ref, so keys stay exactly ``str`` or ``type``, ``active()`` shows classes, and the exact-keys invariant is untouched, a ref being a late-bound name for one existing key rather than a new kind of key.
 Only the consumer side is deferred, which is the side with the import problem.
 
 Resolution runs without a lock.
 It is deterministic and idempotent — :func:`~importlib.import_module` caches and the attribute walk is pure — so a racing second walk costs a walk and both threads arrive at the one object the module holds.
-The alternative, a lock held across an import, orders this library's lock against the interpreter's own per-module import locks, in the opposite direction from a module body that resolves a ref while it is being imported; that is a deadlock, and the same reasoning is why CPython dropped its global import lock.
+The alternative, a lock held across an import, orders this library's lock against the interpreter's own per-module import locks, in the opposite direction from a module body that resolves a ref while it is being imported.
+That is a deadlock, and the same reasoning is why CPython dropped its global import lock.
 A failure is not cached either, unlike a ``lazy`` factory's, because a path that fails inside an import cycle is a path that resolves normally once the cycle unwinds.
 
 The dotted spelling resolves from the longest importable prefix, the way :mod:`pydoc`'s ``locate`` reads a name, and stops at the first prefix that imports rather than continuing to shorter ones, so ``a.b.c`` reports what is wrong with ``a.b`` instead of quietly reporting something about ``a``.
-A prefix that is simply not a module is skipped; an :exc:`ImportError` from inside a module's own body is not, since that is a real failure being mistaken for a path one component too long.
-The colon form is canonical for exactly that reason: it says where the module ends and needs no rule.
+A prefix that is simply not a module is skipped.
+An :exc:`ImportError` from inside a module's own body is not, since that would be a real failure mistaken for a path one component too long.
+The colon form is canonical for exactly that reason, since it says where the module ends and needs no rule.
 
 A bare dotted string as a key was rejected.
 ``use("myapp.context:RequestScope")`` cannot be told from a string namespace of that name, and guessing by looking for a dot would make a namespace called ``app.v2`` an import path.
@@ -262,7 +264,8 @@ Errors
 ------
 
 ``NoProviderError`` subclasses :exc:`LookupError` and carries the requested key and active keys; the message lists active providers, suggests close string matches via :mod:`difflib`, and hints at the fix for each key kind.
-A key that is neither a string nor a class is a ref, which describes itself as the ``ref('...')`` call that made it and is hinted at as a key rather than as a constructor; describing it never resolves it, since an error path is the last place that should be importing.
+A key that is neither a string nor a class is a ref, which describes itself as the ``ref('...')`` call that made it and is hinted at as a key rather than as a constructor.
+Describing one never resolves it, since an error path is the last place that should be importing.
 
 ``KeyResolutionError`` subclasses :exc:`LookupError` too, so ``except LookupError`` still catches everything a lookup raises, and carries the path.
 
@@ -287,4 +290,5 @@ isolate()
 The test suite needs fresh context state per test, and so does every downstream suite; without a public helper, each of them would reach into private module state.
 
 ``isolate()`` is that fixture body: providers and ambient state start empty inside the block, default registrations are rolled back on exit, and pre-existing defaults stay visible because they are configuration, not state.
-Refs created inside the block are rolled back for the same reason and one more: ``resolve_refs()`` walks every ref ever created, so without the rollback a test that builds a deliberately broken path would fail whichever other test calls it next.
+Refs created inside the block are rolled back for the same reason, and for one more.
+``resolve_refs()`` walks every ref ever created, so without the rollback a test that builds a deliberately broken path would fail whichever other test calls it next.

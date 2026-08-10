@@ -1,4 +1,4 @@
-"""The downstream half: it reads the key without importing where it lives."""
+"""The downstream half, which reads the key without importing where it lives."""
 
 from typing import TYPE_CHECKING
 

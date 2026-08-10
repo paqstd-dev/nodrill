@@ -1,11 +1,12 @@
-"""Late-bound keys: the ref() reference, its resolution and the created-refs list.
+"""The ref() key, its resolution, and the list of refs created so far.
 
 A ref names its target by import path and borrows that target's hash and
 equality once it resolves, so the registry entry stored under the class is the
-entry a lookup through the ref finds.  Nothing branches on a ref: the dict does
-the work, use() is untouched and the compiled @inject wrappers are too.
+entry a lookup through the ref finds.  Nothing branches on a ref.  The dict
+does the work, which leaves use() untouched and the compiled @inject wrappers
+with it.
 
-Resolution is deterministic and idempotent, so it runs unlocked; the module
+Resolution is deterministic and idempotent, so it runs unlocked.  The module
 lock guards only the list of created refs that resolve_refs() walks.  Holding a
 lock across import_module() would order this module's lock against the import
 system's per-module locks, which is the deadlock every lazy importer eventually
@@ -22,14 +23,14 @@ from typing import Any
 
 from ._errors import KeyResolutionError
 
-# Distinct from None, which a path can perfectly well name.
+# Distinct from None, which a path can name.
 _PENDING = object()
 
-# A path is a module part and at least one attribute, so two segments at the least.
+# A path is a module part and at least one attribute, so two segments is the minimum.
 _MINIMUM_SEGMENTS = 2
 
-# How many refs may be created between two sweeps of the list below, which bounds
-# it at the live count plus this, however many short-lived refs pass through.
+# How many refs may be created between two sweeps of the list below.  The list
+# stays at the live count plus this, however many short-lived refs pass through.
 _SWEEP_EVERY = 64
 
 _lock = threading.Lock()
@@ -60,10 +61,10 @@ class _Ref:
     def _fill(self) -> Any:
         """Walk the path once and keep what it named.
 
-        A racing second walk is harmless: import_module caches, the walk is
-        pure, and both threads arrive at the one object the module holds.  A
-        failure is not kept, since the same path resolves once the import that
-        was in flight completes.
+        A racing second walk is harmless, since import_module caches and the
+        walk is pure, so both threads end up at the one object the module
+        holds.  A failure is not kept, because the same path resolves once the
+        import that was in flight completes.
         """
         target = self._target = _locate(self._path)
         return target
@@ -169,14 +170,14 @@ def _no_attribute(source: Any, owner: str, name: str) -> str:
     """Explain a missing attribute, naming the cycle when that is what it is.
 
     Only a module can be mid-import, and only the step that reads off the
-    module itself can be the cycle; a name missing from an object further along
-    the path is missing for its own reasons.
+    module itself can be the cycle.  A name missing from an object further
+    along the path is missing for its own reasons.
     """
     if isinstance(source, ModuleType) and _initialising(source):
         return (
             f"{owner!r} is still executing its own import, so {name!r} does not "
-            f"exist yet. The lookup ran during that import: move it inside a function, so "
-            f"it runs once the module is loaded"
+            f"exist yet. The lookup ran during that import, so move it inside a "
+            f"function and it will run once the module is loaded"
         )
     return f"{owner!r} has no attribute {name!r}"
 
@@ -214,8 +215,9 @@ def ref(path: str, /) -> Any:
 
     'package.module:Name' is the canonical form, and 'package.module.Name' is
     accepted too.  Nothing is imported at the call, so a module can name a key
-    that lives in a module importing it back.  Use it wherever a class key goes:
-    use(), provider(key=), set_default(), from_ctx() and @inject(from_=).
+    that lives in a module importing it back.  It goes wherever a class key
+    goes, so use(), provider(key=), lazy(), set_default(), from_ctx() and
+    @inject(from_=) all take one.
     """
     if not isinstance(path, str):
         raise TypeError(f"ref() expects an import path as a string, got {type(path).__name__}")
@@ -242,7 +244,7 @@ def resolve_refs() -> None:
     """Import every ref created so far, raising on the first one that fails.
 
     For an application that would rather fail at startup than on its first
-    request; in Django that call belongs in AppConfig.ready().  Refs that
+    request.  In Django that call belongs in AppConfig.ready().  Refs that
     already resolved are left alone, so a second call costs one read each.
     """
     with _lock:

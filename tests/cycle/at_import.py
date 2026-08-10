@@ -1,7 +1,7 @@
 """A module that reads a late-bound key while it is still being imported.
 
-That is the mistake behind the third resolution error, so the failures are kept
-here and the tests assert on them rather than on a description of them.
+That is the mistake behind the third resolution error, so both failures are
+kept here for the tests to assert on.
 """
 
 from nodrill import KeyResolutionError, ref, use

@@ -63,9 +63,11 @@ KeyResolutionError
 
       KeyResolutionError: ref('myapp.context:RequestScope'): 'myapp.context' is still
       executing its own import, so 'RequestScope' does not exist yet. The lookup ran
-      during that import: move it inside a function, so it runs once the module is loaded
+      during that import, so move it inside a function and it will run once the module
+      is loaded
 
-   The third is the one worth recognising: the lookup ran at module scope inside an import cycle, which is the one place a ref cannot help, because the name genuinely does not exist yet.
+   The third is the one worth recognising.
+   The lookup ran at module scope inside an import cycle, which is the one place a ref cannot help, because the name genuinely does not exist yet.
    See :ref:`howto-refer-to-a-key-you-cannot-import`.
 
    A failure is not cached, so the same ref resolves normally once the import that was in flight completes.

@@ -37,8 +37,8 @@ class NoProviderError(LookupError):
                 parts.append(f"Did you mean {close[0]!r}?")
             parts.append(f"Hint: did you forget `with provider({self.key!r})`?")
         else:
-            # A class opens its own provider; anything else naming one, a ref included,
-            # is a key rather than a constructor.
+            # A class opens its own provider.  Anything else naming one, a ref
+            # included, is a key rather than a constructor.
             opener = f"{wanted}(...)" if isinstance(self.key, type) else f"instance, key={wanted}"
             parts.append(
                 f"Hint: did you forget `with provider({opener})`? "
