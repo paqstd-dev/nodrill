@@ -403,7 +403,7 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
             return factory()
     if default is not _MISSING:
         return default
-    # Diagnosed from the resolved target, since that is what a provider registered.
+    # The resolved target, since that is what a provider registered under.
     diagnosis = _diagnose(target) if _debug_state.recording else None
     raise NoProviderError(key, _registry.get().keys(), diagnosis)
 

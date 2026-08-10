@@ -15,7 +15,7 @@ class NoProviderError(LookupError):
     """Raised by use() when no provider is active for the requested key.
 
     Carries the requested key, the active keys and, under debug mode, the
-    diagnosis of where the value actually is, as attributes.
+    diagnosis of where the value is, as attributes.
     """
 
     def __init__(
@@ -56,8 +56,8 @@ class NoProviderError(LookupError):
                 f"`set_default({wanted}, ...)`."
             )
         message = " ".join(parts)
-        # Below the message rather than instead of it: the facts are still the facts,
-        # and with debug mode off the message is byte for byte what it always was.
+        # Below the message rather than instead of it, so with debug mode off the
+        # message is byte for byte what it always was.
         return f"{message}\n\n{self.diagnosis}" if self.diagnosis else message
 
 

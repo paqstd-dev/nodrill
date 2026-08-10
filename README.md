@@ -54,7 +54,7 @@ with provider("app", db=engine) as ctx:
 - `lazy(Cls, factory)` for a value that costs something to build and only some requests read.
 - `ref("myapp.context:RequestScope")` for a key that lives in a module you cannot import, because it imports yours.
 - `isolate()` to give a test fresh context state and roll everything back after it.
-- `debug()` to turn a miss into a diagnosis: which thread, which task and which line the provider is open on.
+- `debug()` to turn a miss into a diagnosis, naming the thread, the task and the line the provider is open on.
 - No dependencies, Python 3.10 and up, and a public API of twenty-one names.
 
 ## Cost
@@ -94,8 +94,8 @@ That copy is proportional to how many providers are open, which the `with provid
 A lazy provider pays for the cell it allocates on top, which is the trade the feature is for: a microsecond on entry, against a value that is never built at all on the requests that never read it.
 An extending layer copies the enclosing namespace on top of the registry, so its row grows with how many attributes have accumulated rather than with how many layers are open, and that second copy is what keeps a sibling task from seeing a layer opened after it started.
 
-Debug mode has no row, because it is not for the hot path: `debug()` makes entering a provider read the stack and write to a ledger, which is a debugging cost paid gladly and a request cost paid for nothing.
-A lookup that hits costs the same either way.
+Debug mode has no row because it is not for the hot path.
+A lookup that hits costs the same either way, and `debug()` makes entering a provider read the stack and write to a ledger.
 
 The absolute numbers move with the machine, and the ratios are the part worth reading.
 Regenerate with `make bench ARGS=--write`, which measures on your machine and rewrites the block above.
