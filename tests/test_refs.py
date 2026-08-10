@@ -325,6 +325,26 @@ class TestImportCycle:
         with provider(context.RequestScope(user_id=7)):
             assert models.owner_of() == 7
 
+    def test_two_paths_to_one_class_are_one_key(self) -> None:
+        context = importlib.import_module("tests.cycle.context")
+        direct = ref("tests.cycle.context:RequestScope")
+        aliased = ref("tests.cycle.alias:RequestScope")
+        assert direct == aliased
+        assert len({direct: 1, aliased: 2}) == 1
+        with provider(context.RequestScope(user_id=3)):
+            assert use(aliased).user_id == 3
+
+    def test_a_resolved_ref_does_not_follow_a_reload(self) -> None:
+        module = importlib.import_module("tests.cycle.reloadable")
+        key = ref("tests.cycle.reloadable:Scope")
+        resolved = module.Scope
+        assert key == resolved
+        importlib.reload(module)
+        assert module.Scope is not resolved
+        assert key == resolved
+        with provider(module.Scope()), pytest.raises(NoProviderError):
+            use(key)
+
     def test_the_subscript_spelling_injects_the_late_bound_key(self) -> None:
         models = importlib.import_module("tests.cycle.models")
         context = importlib.import_module("tests.cycle.context")

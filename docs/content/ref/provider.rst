@@ -245,6 +245,11 @@ ref
    ``use(ref(...))`` finds the entry a plain ``provider(instance)`` stored under the class, and a provider opened with ``key=ref(...)`` answers ``use(TheClass)``.
    Two refs to one target are equal and hash equal, so a dict keyed by refs behaves as the registry does.
 
+   What a ref keeps is the object it resolved, not the path it walked.
+   Two paths to one class, a module and the package that re-exports it, are therefore one key and one registry entry.
+   :func:`importlib.reload` is the other side of that.
+   It rebinds the name to a new class, and a ref that already resolved goes on naming the old one, as a ``from ... import`` in any other module would.
+
    The provider side resolves immediately, at the ``provider()``, :func:`lazy` or :func:`set_default` call, so the registry only ever holds a class and :func:`active` shows one.
    Only the consumer side is deferred, which is the side with the import problem.
 

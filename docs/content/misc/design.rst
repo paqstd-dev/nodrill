@@ -170,6 +170,9 @@ The entry is found with no branch anywhere, so ``use()`` is untouched, the gener
 Equality follows the hash, so it is identity for a class, whose hash is its identity, and value for a name, whose hash is its value and which two modules can hold as two equal objects.
 Both lookup orders were verified against CPython before the design was accepted, so it does not depend on which side of the comparison the ``dict`` puts first.
 
+Resolution caches the object rather than the path, which is what makes two paths to one class collapse into one key, and what makes a :func:`importlib.reload` invisible to a ref that already resolved.
+The second is the staleness a ``from ... import`` has anywhere in Python, and it is worth a sentence in the reference rather than a re-walk on every lookup.
+
 The provider side resolves eagerly instead, in ``_instance_key()``, ``lazy()`` and ``set_default()``, all of which are cold.
 The registry therefore never holds a ref, so keys stay exactly ``str`` or ``type``, ``active()`` shows classes, and the exact-keys invariant is untouched, a ref being a late-bound name for one existing key rather than a new kind of key.
 Only the consumer side is deferred, which is the side with the import problem.
