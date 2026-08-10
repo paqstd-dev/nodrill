@@ -13,7 +13,7 @@ from ._inject import FromCtx, from_ctx, inject, injected
 from ._lazy import lazy
 from ._refs import ref, resolve_refs
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "Executor",
