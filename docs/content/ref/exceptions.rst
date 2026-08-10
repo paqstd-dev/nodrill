@@ -24,6 +24,11 @@ NoProviderError
 
       A tuple of the keys that were active at the time, in registration order.
 
+   .. attribute:: diagnosis
+
+      Why the key was not visible from here, as a string, or ``None``.
+      Only ever set when :func:`debug` was on for the lookup, and rendered below the message when it is.
+
    The message names the requested key, lists the active ones, and states the fix.
    For a string key it also offers the nearest match, found with :mod:`difflib`; for a class key it mentions :func:`set_default`.
 

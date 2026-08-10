@@ -8,6 +8,7 @@ contextvars, so lookups are thread-safe and asyncio-task-safe.
 from ._ambient import context
 from ._concurrency import Executor, wrap
 from ._core import Namespace, active, isolate, provider, set_default, use
+from ._debug import debug, explain
 from ._errors import FrozenContextError, KeyResolutionError, NoProviderError
 from ._inject import FromCtx, from_ctx, inject, injected
 from ._lazy import lazy
@@ -25,6 +26,8 @@ __all__ = [
     "__version__",
     "active",
     "context",
+    "debug",
+    "explain",
     "from_ctx",
     "inject",
     "injected",

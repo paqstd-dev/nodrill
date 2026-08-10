@@ -56,7 +56,7 @@ The factory runs on every miss rather than caching its first result: a cached in
 A registered factory wins over the call-site default, because registration declares the canonical fallback for the class, while the call-site default only says what this one caller can live with.
 
 The defaults table itself is a module-level dict of factories written at import time.
-That is configuration, not flowing state; state lives only in ContextVars.
+That is configuration, not flowing state; state lives only in ContextVars, with the one further exception argued for below.
 
 The ambient context object
 --------------------------
@@ -279,11 +279,31 @@ The name lives in a private slot, mangled to ``_Namespace__label``, so it stays 
 
 The ambient ``context`` raises plain :exc:`AttributeError` listing currently-set keys, keeping ``getattr`` and ``hasattr`` idioms working.
 
+The debug ledger is module-level state, on purpose
+---------------------------------------------------
+
+State flows in ContextVars here, with one documented exception, the ``set_default`` table, which is configuration written at import time.
+:func:`~nodrill.debug` adds a second exception, and it is a different kind of one, so it is written down rather than waved through.
+
+The ledger of open provider blocks is a plain module-level dict, and it has to be.
+The failure it exists to diagnose is a frame that cannot see a scope: a pool worker, a task created too early, a callback that outlived its block.
+A ContextVar could only ever show that frame the scopes it can already reach, which are exactly the ones not worth reporting.
+The whole value of the record is that it is readable from a context that did not inherit it.
+
+The same argument settles the rest of the shape.
+Recording is on or off for the process and reference counted, not scoped, since a per-context switch could not observe the cross-context failure either.
+Writes take a lock and reads do not: a read only ever happens on a miss, which is already slow and about to raise, and it copies the dict before walking it, so a concurrent write can degrade the message and cannot break it.
+Entries hold the key and the site and never the value, because a debugging aid that keeps request objects alive past their scope is a memory leak with good intentions; they are keyed by the provider's ``id`` rather than by the provider, so the block itself is not kept alive either.
+
+Read counting, the ``unused=True`` half of the feature, stays off the hot path by a different trick: rather than branching in ``use()``, the provider installs a ``dict`` subclass as the registry, and the subclass counts what is read out of it.
+The cost lands on contexts a counting provider created, and ``use()`` is the same function it was.
+
 Module layout
 -------------
 
 ``_core`` is the registry: ``provider``, ``use``, ``set_default``, ``active``, ``Namespace``, ``isolate``.
 ``_frozen`` and ``_ambient`` hold the two things that share nothing with it but a ContextVar, the read-only proxy and the ambient namespace, both of which are mostly protocol tables and would otherwise dominate the file they sit in.
+``_debug`` is instrumentation rather than registry, and sits beside ``_core`` for that reason: nothing on a successful lookup reads it.
 ``_inject``, ``_concurrency`` and ``_errors`` are the remaining features.
 Nothing under ``nodrill._*`` is public.
 

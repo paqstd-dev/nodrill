@@ -14,19 +14,23 @@ def _describe_key(key: Any) -> str:
 class NoProviderError(LookupError):
     """Raised by use() when no provider is active for the requested key.
 
-    Carries the requested key and the active keys as attributes.
+    Carries the requested key, the active keys and, under debug mode, the
+    diagnosis of where the value actually is, as attributes.
     """
 
-    def __init__(self, key: Any, active_keys: Iterable[Any] = ()) -> None:
+    def __init__(
+        self, key: Any, active_keys: Iterable[Any] = (), diagnosis: str | None = None
+    ) -> None:
         self.key = key
         self.active_keys = tuple(active_keys)
+        self.diagnosis = diagnosis
         super().__init__(self._build_message())
 
     def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
         # args holds the built message, so the default reconstruction would pass
         # that message as the key.  copy and pickle have to give back the same
         # exception, since a worker process delivers a failure by pickling it.
-        return (self.__class__, (self.key, self.active_keys))
+        return (self.__class__, (self.key, self.active_keys, self.diagnosis))
 
     def _build_message(self) -> str:
         wanted = _describe_key(self.key)
@@ -51,7 +55,10 @@ class NoProviderError(LookupError):
                 f"A fallback can be registered with "
                 f"`set_default({wanted}, ...)`."
             )
-        return " ".join(parts)
+        message = " ".join(parts)
+        # Below the message rather than instead of it: the facts are still the facts,
+        # and with debug mode off the message is byte for byte what it always was.
+        return f"{message}\n\n{self.diagnosis}" if self.diagnosis else message
 
 
 class KeyResolutionError(LookupError):

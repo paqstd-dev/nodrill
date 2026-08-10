@@ -108,3 +108,4 @@ The README's cost table prices that per-call replay, for code that puts a wrappe
 .. seealso::
 
    :doc:`/content/howto/fan-out-with-asyncio` and :doc:`/content/howto/run-work-in-threads` for complete programs.
+   :doc:`/content/howto/find-out-why-the-context-is-missing` for when the context did not arrive and it is not obvious which boundary dropped it.

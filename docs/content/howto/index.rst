@@ -15,6 +15,7 @@ Each one is a complete program you can paste into a file and run, with the reaso
    run-work-in-threads
    test-injected-code
    refer-to-a-key-you-cannot-import
+   find-out-why-the-context-is-missing
    replace-a-contextvar
 
 .. rubric:: See also

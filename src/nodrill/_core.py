@@ -14,6 +14,8 @@ from types import MappingProxyType, TracebackType
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, overload
 
 from ._ambient import _ambient
+from ._debug import _diagnose, _record_enter, _record_exit
+from ._debug import _state as _debug_state
 from ._errors import NoProviderError, _describe_key
 from ._frozen import _FrozenProxy
 from ._lazy import _is_lazy, _Lazy, _LazyCell, _Resolution
@@ -102,6 +104,8 @@ class _Provider(Generic[T]):
             )
         updated = dict(_registry.get())
         updated[self._key] = self._public
+        if _debug_state.recording:
+            updated = _record_enter(self, self._key, updated)
         self._token = _registry.set(updated)
         return self._value
 
@@ -114,6 +118,8 @@ class _Provider(Generic[T]):
         token, self._token = self._token, None
         if token is not None:
             _registry.reset(token)
+            if _debug_state.recording:
+                _record_exit(self, failed=exc_type is not None)
 
     # Nothing awaits, but the protocol lets async code spell `async with provider(...)`.
     async def __aenter__(self) -> T:
@@ -397,7 +403,9 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
             return factory()
     if default is not _MISSING:
         return default
-    raise NoProviderError(key, _registry.get().keys())
+    # Diagnosed from the resolved target, since that is what a provider registered.
+    diagnosis = _diagnose(target) if _debug_state.recording else None
+    raise NoProviderError(key, _registry.get().keys(), diagnosis)
 
 
 def active() -> Mapping[str | type[Any], Any]:
