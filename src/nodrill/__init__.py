@@ -20,7 +20,7 @@ from ._lazy import lazy
 from ._refs import ref, resolve_refs
 from ._report import annotate_exceptions
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 """The installed version, as a string."""
 
 __all__ = [
