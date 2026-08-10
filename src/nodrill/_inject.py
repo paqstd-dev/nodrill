@@ -216,6 +216,8 @@ def _marker_spec(param_name: str, base: Any, marker: _FromCtxMarker) -> _Marker:
             )
         key = base
     if isinstance(key, str) and attr is None:
+        # A ref naming a string reaches this same rule at the first call, since
+        # nothing here is allowed to import it.
         attr = param_name
     return _Marker(param_name, key, attr)
 
@@ -407,22 +409,42 @@ def _resolve_lines(target: str, key: str, ns: _WrapperSpace, indent: str) -> lis
     ]
 
 
+def _ref_attr(key: Any, value: Any, name: str) -> Any:
+    """Return the attribute a string key implies, or the value itself.
+
+    A string key hands over a namespace and the parameter names the attribute
+    to read from it, while a class key hands over the instance.  Which of the
+    two a ref is becomes known only when it resolves, so the choice waits for
+    the call the way the lookup does.
+    """
+    return getattr(value, name) if isinstance(key.resolve(), str) else value
+
+
+def _marker_fill(marker: _Marker, key: str, ns: _WrapperSpace) -> str | None:
+    """Render what turns the resolved value into the argument, if anything."""
+    if marker.attr is None:
+        if not _is_ref(marker.key):
+            return None
+        ns.bind("ref_attr", _ref_attr)
+        return f"{ns.ref_attr}({key}, {ns.value}, {marker.name!r})"
+    if marker.attr.isidentifier() and not keyword.iskeyword(marker.attr):
+        return f"{ns.value}.{marker.attr}"
+    attr = ns.bind(f"attr_{marker.name}", marker.attr)
+    ns.bind("getattr", getattr)
+    return f"{ns.getattr}({ns.value}, {attr})"
+
+
 def _marker_lines(markers: tuple[_Marker, ...], ns: _WrapperSpace) -> list[str]:
     """Render the resolution block of each marker parameter."""
     lines: list[str] = []
     for marker in markers:
         key = ns.bind(f"key_{marker.name}", marker.key)
-        target = marker.name if marker.attr is None else ns.value
+        fill = _marker_fill(marker, key, ns)
+        target = marker.name if fill is None else ns.value
         lines.append(f"if {marker.name} is {ns.injected}:")
         lines += _resolve_lines(target, key, ns, "    ")
-        if marker.attr is None:
-            continue
-        if marker.attr.isidentifier() and not keyword.iskeyword(marker.attr):
-            lines.append(f"    {marker.name} = {ns.value}.{marker.attr}")
-        else:
-            attr = ns.bind(f"attr_{marker.name}", marker.attr)
-            ns.bind("getattr", getattr)
-            lines.append(f"    {marker.name} = {ns.getattr}({ns.value}, {attr})")
+        if fill is not None:
+            lines.append(f"    {marker.name} = {fill}")
     return lines
 
 

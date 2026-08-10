@@ -70,11 +70,11 @@ from_ctx
 
    Build a parameter marker for use inside :data:`typing.Annotated`.
 
-   :param key: A string name or a class.
+   :param key: A string name, a class, or a :func:`ref` naming one.
       ``None`` means the annotated type is the key, which requires that type to be a plain class.
    :param attr: The attribute to read off the context object.
-      Defaults to the parameter's own name for string keys.
-   :raises TypeError: ``key`` is neither a string, a class, nor ``None``; or a bare marker annotates something that is not a plain class.
+      Defaults to the parameter's own name for string keys, and for a ref that turns out to name one, which is settled at the first call rather than at decoration.
+   :raises TypeError: ``key`` is neither a string, a class, a ref, nor ``None``; or a bare marker annotates something that is not a plain class.
 
    Three shapes:
 

@@ -23,7 +23,7 @@ from nodrill import (
     set_default,
     use,
 )
-from nodrill._refs import _SWEEP_EVERY, _created
+from nodrill._refs import _SWEEP_EVERY, _created, _imported
 
 HERE = __name__
 
@@ -136,6 +136,14 @@ class TestAcceptedWhereverAClassIs:
         with provider(Config(dsn="injected")):
             assert handler() == "injected"
 
+    def test_from_ctx_marker_on_a_named_key_pulls_the_parameter_name(self) -> None:
+        @inject
+        def handler(dsn: Annotated[str, from_ctx(ref(f"{HERE}:NAME"))] = injected) -> str:
+            return dsn
+
+        with provider(NAME, dsn="named"):
+            assert handler() == "named"
+
     def test_from_ctx_marker_pulls_an_attribute(self) -> None:
         @inject
         def handler(dsn: Annotated[str, from_ctx(config_ref(), attr="dsn")] = injected) -> str:
@@ -179,13 +187,13 @@ class TestResolutionFailures:
 
     def test_module_still_initialising(self) -> None:
         module = importlib.import_module("tests.cycle.at_import")
-        message = str(module.FAILURE)
+        message = module.FAILURE
         assert "'tests.cycle.at_import' is still executing its own import" in message
         assert "move it inside a function" in message
 
     def test_a_nested_name_missing_during_an_import_is_not_the_cycle(self) -> None:
         module = importlib.import_module("tests.cycle.at_import")
-        message = str(module.NESTED_FAILURE)
+        message = module.NESTED_FAILURE
         assert "'tests.cycle.at_import.Scope' has no attribute 'missing'" in message
         assert "still executing" not in message
 
@@ -243,6 +251,13 @@ class TestResolutionFailures:
         with pytest.raises(TypeError, match="expects an import path as a string"):
             ref(Config)  # type: ignore[arg-type]
 
+    def test_a_path_naming_a_module_is_only_refused_at_the_lookup(self) -> None:
+        # 'package.module' cannot be told from 'module.Name', so the path is accepted
+        # and the module it names is what fails, as any other non-key target does.
+        key = ref("json.decoder")
+        with pytest.raises(TypeError, match="use\\(\\) expects a string name or a class"):
+            use(key)
+
     def test_target_that_is_no_kind_of_key(self) -> None:
         with pytest.raises(TypeError, match="use\\(\\) expects a string name or a class"):
             use(ref(f"{HERE}.config_ref"))
@@ -288,6 +303,11 @@ class TestResolveRefs:
             broken = ref("nodrill_nonexistent:Thing")
             assert broken is not None
         resolve_refs()
+
+    def test_a_ref_a_module_body_made_survives_the_block_that_imported_it(self) -> None:
+        with isolate():
+            models = importlib.import_module("tests.cycle.models")
+        assert any(holder() is models.RequestScope for holder in _imported)
 
 
 class TestConcurrency:

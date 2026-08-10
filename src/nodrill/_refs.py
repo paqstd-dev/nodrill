@@ -7,7 +7,7 @@ does the work, which leaves use() untouched and the compiled @inject wrappers
 with it.
 
 Resolution is deterministic and idempotent, so it runs unlocked.  The module
-lock guards only the list of created refs that resolve_refs() walks.  Holding a
+lock guards only the lists of created refs that resolve_refs() walks.  Holding a
 lock across import_module() would order this module's lock against the import
 system's per-module locks, which is the deadlock every lazy importer eventually
 reports.
@@ -15,6 +15,7 @@ reports.
 
 from __future__ import annotations
 
+import inspect
 import threading
 import weakref
 from importlib import import_module
@@ -29,12 +30,18 @@ _PENDING = object()
 # A path is a module part and at least one attribute, so two segments is the minimum.
 _MINIMUM_SEGMENTS = 2
 
-# How many refs may be created between two sweeps of the list below.  The list
+# How many refs may be created between two sweeps of a list below.  A list
 # stays at the live count plus this, however many short-lived refs pass through.
 _SWEEP_EVERY = 64
 
 _lock = threading.Lock()
+
+# The refs a block created, which isolate() rolls back, and the refs a module
+# body created, which it does not.  A module keeps the refs it made and stays
+# imported once the block that first imported it is over, so forgetting them
+# would leave resolve_refs() reporting success over a path nobody checks again.
 _created: list[weakref.ref[_Ref]] = []
+_imported: list[weakref.ref[_Ref]] = []
 
 
 class _Ref:
@@ -227,17 +234,47 @@ def ref(path: str, /) -> Any:
     return created
 
 
+def _during_import() -> bool:
+    """Report whether a module running its own body is on the stack.
+
+    A ref created there belongs to the module that keeps it rather than to
+    whatever block first triggered the import, and that is the distinction
+    isolate() needs before it forgets what its own block created.
+    """
+    frame = inspect.currentframe()
+    while frame is not None:
+        if getattr(frame.f_globals.get("__spec__"), "_initializing", False):
+            return True
+        frame = frame.f_back
+    return False
+
+
 def _remember(created: _Ref) -> None:
     """Hold a weak entry for resolve_refs(), sweeping the dead ones now and then.
 
-    The sweep is here rather than in a collection callback, which would have to
-    take this lock from whichever thread happened to be collecting, including
-    one already holding it.
+    Which of the two lists takes the entry is what says whether isolate() may
+    forget it.  The sweep is here rather than in a collection callback, which
+    would have to take this lock from whichever thread happened to be
+    collecting, including one already holding it.
     """
+    holders = _imported if _during_import() else _created
     with _lock:
-        _created.append(weakref.ref(created))
-        if len(_created) % _SWEEP_EVERY == 0:
-            _created[:] = [holder for holder in _created if holder() is not None]
+        holders.append(weakref.ref(created))
+        if len(holders) % _SWEEP_EVERY == 0:
+            holders[:] = [holder for holder in holders if holder() is not None]
+
+
+def _live(holders: list[weakref.ref[_Ref]]) -> list[_Ref]:
+    """Return the refs still alive, dropping the entries of the ones that are not."""
+    alive: list[_Ref] = []
+    kept: list[weakref.ref[_Ref]] = []
+    for holder in holders:
+        target = holder()
+        if target is not None:
+            alive.append(target)
+            kept.append(holder)
+    holders[:] = kept
+    return alive
 
 
 def resolve_refs() -> None:
@@ -248,21 +285,18 @@ def resolve_refs() -> None:
     already resolved are left alone, so a second call costs one read each.
     """
     with _lock:
-        live: list[_Ref] = []
-        holders: list[weakref.ref[_Ref]] = []
-        for holder in _created:
-            target = holder()
-            if target is not None:
-                live.append(target)
-                holders.append(holder)
-        _created[:] = holders
+        live = _live(_created) + _live(_imported)
     # Outside the lock, since resolving imports and an import can create a ref.
     for target in live:
         target.resolve()
 
 
 def _snapshot() -> list[weakref.ref[_Ref]]:
-    """Return the created-refs list, for isolate() to put back afterwards."""
+    """Return the created-refs list, for isolate() to put back afterwards.
+
+    Only the block-scoped list is taken.  What an import created is not the
+    block's to roll back.
+    """
     with _lock:
         return list(_created)
 

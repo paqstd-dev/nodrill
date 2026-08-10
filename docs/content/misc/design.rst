@@ -293,5 +293,7 @@ isolate()
 The test suite needs fresh context state per test, and so does every downstream suite; without a public helper, each of them would reach into private module state.
 
 ``isolate()`` is that fixture body: providers and ambient state start empty inside the block, default registrations are rolled back on exit, and pre-existing defaults stay visible because they are configuration, not state.
-Refs created inside the block are rolled back for the same reason, and for one more.
+Refs the block itself created are rolled back for the same reason, and for one more.
 ``resolve_refs()`` walks every ref ever created, so without the rollback a test that builds a deliberately broken path would fail whichever other test calls it next.
+A ref made while a module was running its own body is the exception, and is kept.
+It belongs to the module holding it, the module stays imported after the block, and forgetting it would leave ``resolve_refs()`` reporting success over a path nothing checks again.

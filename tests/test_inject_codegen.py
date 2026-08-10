@@ -6,7 +6,7 @@ import weakref
 from dataclasses import dataclass
 from inspect import Parameter, Signature
 from types import FunctionType
-from typing import Any
+from typing import Annotated, Any
 
 import pytest
 
@@ -14,9 +14,11 @@ from nodrill import (
     FromCtx,
     FrozenContextError,
     NoProviderError,
+    from_ctx,
     inject,
     injected,
     provider,
+    ref,
     set_default,
     use,
 )
@@ -162,6 +164,22 @@ class TestGoldenSource:
             "        if db is _nd_omitted:\n"
             "            db = _nd_miss(_nd_key_db)\n"
             "    return _nd_func(request, db)"
+        )
+
+    def test_ref_marker_defers_the_attribute_rule_to_the_call(self) -> None:
+        @inject
+        def handler(dsn: Annotated[str, from_ctx(ref(f"{__name__}:Db"))] = injected) -> str:
+            return dsn
+
+        assert isinstance(handler, FunctionType)
+        assert generated_source(handler) == (
+            "def handler(dsn=_nd_injected):\n"
+            "    if dsn is _nd_injected:\n"
+            "        _nd_value = _nd_registry().get(_nd_key_dsn, _nd_omitted)\n"
+            "        if _nd_value is _nd_omitted:\n"
+            "            _nd_value = _nd_miss(_nd_key_dsn)\n"
+            "        dsn = _nd_ref_attr(_nd_key_dsn, _nd_value, 'dsn')\n"
+            "    return _nd_func(dsn)"
         )
 
     def test_missing_guard_precedes_resolution(self) -> None:

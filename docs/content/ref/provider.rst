@@ -225,8 +225,11 @@ ref
    :param path: ``'package.module:Name'``, the canonical form, in which the colon says where the module ends.
       ``'package.module.Name'`` is accepted too and resolved from the longest importable prefix, walking the rest as attributes.
    :raises TypeError: ``path`` is not a string.
-   :raises ValueError: ``path`` names no attribute, as ``'package.module'`` or ``'Name'`` does.
+   :raises ValueError: ``path`` is not two or more identifier segments, as ``'Name'`` or ``'a..b'`` is.
    :raises KeyResolutionError: On the first use, when the path cannot be imported.
+
+   Nothing else about a path can be checked at the call.
+   ``'package.module'`` is written exactly as ``'module.Name'`` is, so it is accepted and resolves to the module, which is no kind of key and raises :exc:`TypeError` out of :func:`use`.
 
    .. code-block:: python
 
@@ -287,7 +290,8 @@ resolve_refs
    In Django that call belongs in ``AppConfig.ready()``.
    Refs that already resolved are left alone, so a second call costs one read each, and refs no longer referenced anywhere are forgotten rather than resolved.
 
-   :func:`isolate` rolls back the refs created inside its block, the way it rolls back :func:`set_default` registrations, so one test's deliberately broken path is not another test's startup failure.
+   :func:`isolate` rolls back the refs its own block created, the way it rolls back :func:`set_default` registrations, so one test's deliberately broken path is not another test's startup failure.
+   A ref a module made while the block imported it is kept, because the module keeps it and stays imported after the block, so the path goes on being checked.
 
 set_default
 -----------

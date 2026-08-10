@@ -166,6 +166,7 @@ max-complexity = 12
   # semantics under test.
   "SIM117", "PT012",
   "INP001",
+  "S301",             # round-trip tests unpickle what they pickled a line earlier
 ]
 # Sphinx owns the module shape: settings are module-level assignments, and
 # `copyright` shadows the builtin by convention.

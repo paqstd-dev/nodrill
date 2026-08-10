@@ -441,9 +441,11 @@ def isolate() -> Iterator[None]:
     """Run a block against fresh context state, restoring the outer state on exit.
 
     Providers and ambient attributes start empty.  Any set_default()
-    registration made inside is rolled back, and so is any ref() created
-    there, which is what keeps one test's broken path out of another test's
-    resolve_refs().  Meant for test fixtures.
+    registration made inside is rolled back, and so is any ref() the block
+    itself created, which is what keeps one test's broken path out of another
+    test's resolve_refs().  A ref a module made while the block imported it
+    belongs to that module and stays, since the module does.  Meant for test
+    fixtures.
     """
     registry_token = _registry.set({})
     ambient_token = _ambient.set({})

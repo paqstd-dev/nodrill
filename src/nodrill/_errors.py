@@ -22,6 +22,12 @@ class NoProviderError(LookupError):
         self.active_keys = tuple(active_keys)
         super().__init__(self._build_message())
 
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        # args holds the built message, so the default reconstruction would pass
+        # that message as the key.  copy and pickle have to give back the same
+        # exception, since a worker process delivers a failure by pickling it.
+        return (self.__class__, (self.key, self.active_keys))
+
     def _build_message(self) -> str:
         wanted = _describe_key(self.key)
         parts = [f"use({wanted}): no active provider for {wanted}."]
@@ -56,7 +62,12 @@ class KeyResolutionError(LookupError):
 
     def __init__(self, path: str, problem: str) -> None:
         self.path = path
+        self._problem = problem
         super().__init__(f"ref({path!r}): {problem}")
+
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        # Both arguments are required, and args holds only the built message.
+        return (self.__class__, (self.path, self._problem))
 
 
 class FrozenContextError(AttributeError):
