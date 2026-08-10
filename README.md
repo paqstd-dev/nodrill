@@ -42,36 +42,34 @@ with provider("app", db=engine) as ctx:
     handle()  # any callee reads use("app").db
 ```
 
-## What you get
+## The rest of the library
 
-- Typed keys, so `use(Config)` is inferred as `Config` under both mypy and pyright.
-- String namespaces for the values that do not deserve a class, as above.
-- `@inject` to declare the dependency in the signature and still pass it explicitly in a test.
-- `set_default(Config, factory)` for code that has to run outside any provider.
-- Threads and asyncio, where tasks inherit the context and `wrap` and `Executor` carry it into threads.
-- `frozen=True` hands consumers a read-only view while the block keeps a writable object.
-- `extend=True` for a scope that accumulates as the call descends, one layer per `with` block, each unwound on exit.
-- `lazy(Cls, factory)` for a value that costs something to build and only some requests read.
-- `ref("myapp.context:RequestScope")` for a key that lives in a module you cannot import, because it imports yours.
-- `isolate()` to give a test fresh context state and roll everything back after it.
-- `debug()` to turn a miss into a diagnosis, naming the thread, the task and the line the provider is open on.
-- `annotate_exceptions()` to put the scope on the traceback, so a failure five frames down says which request it was.
-- No dependencies, Python 3.10 and up, and a small public API, all of it importable from the top-level package.
+A key is a class or a string, and `use(Config)` is inferred as `Config` under both mypy and pyright.
+`provider(instance, key=Repository)` registers under a protocol rather than under the class that happens to implement it, and `ref("myapp.context:Scope")` names a key that lives in a module importing yours.
 
-## Cost
+How the value is handed out is the provider's decision.
+`lazy(Cls, factory)` builds it on the first read, and not at all without one.
+`frozen=True` gives consumers a read-only view while the block keeps writing, and `extend=True` lets a scope accumulate as the call descends, one layer per block, each unwound on exit.
+
+Reading it is `use()` anywhere below, or `@inject` to put the dependency in the signature where a test can still pass it explicitly.
+Tasks inherit the context, `wrap` and `Executor` carry it into threads, and `set_default(Config, factory)` answers a read that ran outside every provider.
+
+When it goes wrong, `debug()` turns a miss into a diagnosis naming the thread, the task and the line the provider is open on, and `annotate_exceptions()` puts the scope on the traceback.
+`isolate()` gives a test fresh context state and rolls it back afterwards.
+Everything above is importable from the top-level package, and there is nothing else to import.
+
+## Overhead
 
 A lookup is one dict read on a single `ContextVar`, and nothing is constructed, resolved or cached along the way.
-Reading through `use()` costs a little over the parameter it replaces, and `@inject` costs a little more than that, because it fills the argument before the body runs.
-`frozen=True` and `lazy` add a proxy hop to every attribute the consumer touches, and a `ref()` key pays for a Python-level hash where a class hashes in C.
+Reading through `use()` costs a little over the parameter it replaces, and `@inject` a little more than that, because it fills the argument before the body runs.
+`frozen=True` and `lazy` add a proxy hop to every attribute the consumer touches, and a `ref()` key pays a Python-level hash where a class hashes in C.
+A request that reads a provided value a hundred times spends microseconds in nodrill, against hundreds of microseconds for one round trip to a database.
 
 Entering a provider is the expensive end, because it copies the registry so that sibling tasks stay isolated.
 That copy is proportional to how many providers are open, and it happens once per scope rather than once per lookup.
 An extending layer copies the enclosing namespace on top of that, which is what keeps a sibling task from seeing a layer opened after it started.
 
-Debug mode is not for the hot path, and exception notes run nothing at all until an exception is already leaving a block.
-
-Measured numbers, the machine they were measured on, and the script that produced them are on the [performance page](https://nodrill.readthedocs.io/en/latest/content/misc/performance.html).
-`make bench ARGS=--write` measures on your own machine, which is the only measurement that answers whether this is fast enough for you.
+The numbers, the machine that produced them and the script that timed them are on the [performance page](https://nodrill.readthedocs.io/en/latest/content/misc/performance.html), and `make bench ARGS=--write` runs it on yours.
 
 ## Install
 
