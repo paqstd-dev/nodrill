@@ -17,7 +17,7 @@ from ._ambient import _ambient
 from ._errors import NoProviderError, _describe_key
 from ._frozen import _FrozenProxy
 from ._lazy import _is_lazy, _Lazy, _LazyCell, _Resolution
-from ._refs import _key_target, _restore, _snapshot
+from ._refs import _is_ref, _key_target, _restore, _snapshot
 
 T = TypeVar("T")
 D = TypeVar("D")
@@ -324,6 +324,12 @@ def _instance_key(target: Any, key: Any) -> str | type[Any]:
         raise TypeError(
             f"provider() takes an instance, not a class. "
             f"Did you mean provider({target.__name__}(...))?"
+        )
+    if _is_ref(target):
+        # Described rather than resolved, so a bad path is not reported as a bad call.
+        raise TypeError(
+            f"provider() takes an instance, not a key. {target!r} names the class to "
+            f"register under: pass the value, as provider(instance, key={target!r})"
         )
     if key is None:
         return type(target)

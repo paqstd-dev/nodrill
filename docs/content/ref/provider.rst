@@ -29,7 +29,7 @@ provider
       See :ref:`frozen-views` below.
    :param extend: When true, the block lays ``**values`` over a copy of the namespace the same name already holds, instead of shadowing it.
       String-named providers only; see :ref:`extending-providers` below.
-   :raises TypeError: More than one positional argument, no target at all, a class rather than an instance, keyword values with an instance target, a non-string ``name=``, a ``key=`` that is neither a string nor a class, a ``key=`` beside a :func:`lazy` target, which already names its own key, or ``extend=True`` on anything but a string name.
+   :raises TypeError: More than one positional argument, no target at all, a class or a :func:`ref` rather than an instance, keyword values with an instance target, a non-string ``name=``, a ``key=`` that is neither a string nor a class, a ``key=`` beside a :func:`lazy` target, which already names its own key, or ``extend=True`` on anything but a string name.
       On entry, ``extend=True`` over a name that holds something other than a :class:`Namespace`.
    :raises RuntimeError: On entering a provider object that is already active.
       Create a separate provider for a nested or concurrent block.
@@ -238,6 +238,8 @@ ref
           scope = use(RequestScope)
 
    The result goes wherever a class key goes: :func:`use`, ``provider(instance, key=...)``, :func:`lazy`, :func:`set_default`, :func:`from_ctx` and ``@inject(from_=...)``.
+   It is a key and not a value, so ``provider(ref(...))`` raises: the instance is what a provider takes, and the ref names what to register it under.
+   A path naming a string constant works as well and answers the name that string holds, compared by value the way any string key is.
    A ref borrows its target's identity once it resolves, so it is not a second kind of key: ``use(ref(...))`` finds the entry a plain ``provider(instance)`` stored under the class, and a provider opened with ``key=ref(...)`` answers ``use(TheClass)``.
    Two refs to one target are equal and hash equal, so a dict keyed by refs behaves as the registry does.
 

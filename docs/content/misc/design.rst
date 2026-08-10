@@ -167,6 +167,7 @@ It reads better and taxes every lookup in every program that never names a key t
 So a ref borrows its target's identity rather than being a key of its own: ``__hash__`` is the target's hash and ``__eq__`` answers true for the target.
 A ``dict`` lookup hashes the ref into the slot the class occupies, compares the stored class against it, gets ``NotImplemented`` from ``type.__eq__`` and falls through to the reflected ``_Ref.__eq__``.
 The entry is found with no branch anywhere: ``use()`` is untouched, the generated wrappers are untouched, and the cost is one Python-level hash and one equality call, paid by the lookups that go through a ref and by nothing else.
+Equality follows the hash: identity for a class, whose hash is its identity, and value for a name, whose hash is its value and which two modules can hold as two equal objects.
 Both lookup orders were verified against CPython before the design was accepted, so it does not depend on which side of the comparison the ``dict`` puts first.
 
 The provider side resolves eagerly instead, in ``_instance_key()``, ``lazy()`` and ``set_default()``, all of which are cold.

@@ -23,8 +23,19 @@ from nodrill import (
     set_default,
     use,
 )
+from nodrill._refs import _SWEEP_EVERY, _created
 
 HERE = __name__
+
+
+def distinct(text: str) -> str:
+    """Return a string equal to text and not the same object, as a built name is."""
+    return text.upper().lower()
+
+
+# The name a provider is opened under, and the same name as the module holds it.
+NAME = distinct("request_scope")
+OTHER_NAME = distinct("request_scope")
 
 
 @dataclass
@@ -66,6 +77,18 @@ class TestBorrowedIdentity:
 
     def test_unrelated_object_is_not_equal(self) -> None:
         assert config_ref() != "Config"
+
+    def test_a_named_key_compares_by_value(self) -> None:
+        # The module attribute and the registry key are equal strings, not one object.
+        key = distinct("request_scope")
+        assert key is not NAME
+        with provider(Config(dsn="named"), key=key):
+            assert use(ref(f"{HERE}:NAME")).dsn == "named"
+
+    def test_two_refs_to_one_named_key_are_one_key(self) -> None:
+        first, second = ref(f"{HERE}:NAME"), ref(f"{HERE}:OTHER_NAME")
+        assert first == second
+        assert len({first: 1, second: 2}) == 1
 
     def test_both_spellings_name_the_same_target(self) -> None:
         assert ref(f"{HERE}.Config") == ref(f"{HERE}:Config")
@@ -160,6 +183,12 @@ class TestResolutionFailures:
         assert "'tests.cycle.at_import' is still executing its own import" in message
         assert "move it inside a function" in message
 
+    def test_a_nested_name_missing_during_an_import_is_not_the_cycle(self) -> None:
+        module = importlib.import_module("tests.cycle.at_import")
+        message = str(module.NESTED_FAILURE)
+        assert "'tests.cycle.at_import.Scope' has no attribute 'missing'" in message
+        assert "still executing" not in message
+
     def test_error_is_a_lookup_error(self) -> None:
         with pytest.raises(LookupError):
             use(ref("nodrill_nonexistent:Thing"))
@@ -206,6 +235,10 @@ class TestResolutionFailures:
         with pytest.raises(ValueError, match="is not an import path"):
             ref(path)
 
+    def test_a_ref_is_not_a_provider_target(self) -> None:
+        with pytest.raises(TypeError, match="takes an instance, not a key"):
+            provider(config_ref())
+
     def test_path_must_be_a_string(self) -> None:
         with pytest.raises(TypeError, match="expects an import path as a string"):
             ref(Config)  # type: ignore[arg-type]
@@ -242,6 +275,13 @@ class TestResolveRefs:
         del broken
         gc.collect()
         resolve_refs()
+
+    def test_dead_entries_do_not_accumulate(self) -> None:
+        live = [config_ref(), config_ref()]
+        for _ in range(_SWEEP_EVERY * 3):
+            config_ref()
+        gc.collect()
+        assert len(_created) < len(live) + _SWEEP_EVERY
 
     def test_refs_made_inside_isolate_do_not_leak_out(self) -> None:
         with isolate():

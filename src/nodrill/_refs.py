@@ -28,6 +28,10 @@ _PENDING = object()
 # A path is a module part and at least one attribute, so two segments at the least.
 _MINIMUM_SEGMENTS = 2
 
+# How many refs may be created between two sweeps of the list below, which bounds
+# it at the live count plus this, however many short-lived refs pass through.
+_SWEEP_EVERY = 64
+
 _lock = threading.Lock()
 _created: list[weakref.ref[_Ref]] = []
 
@@ -76,10 +80,14 @@ class _Ref:
         target = self._target
         if target is _PENDING:
             target = self._fill()
+        if type(other) is _Ref:
+            other = other.resolve()
         if other is target:
             return True
-        if type(other) is _Ref:
-            return other.resolve() is target
+        if isinstance(target, str):
+            # A name compares by value, since the hash is the value's and two
+            # equal strings need not be one object.
+            return other == target
         # A dict comparing a stored class against a ref reaches this through the
         # reflected call, which is what makes one entry answer both spellings.
         return NotImplemented
@@ -145,22 +153,28 @@ def _initialising(module: ModuleType) -> bool:
 
 def _walk(path: str, module: ModuleType, attributes: list[str]) -> Any:
     """Follow the attribute part of a path from the module it starts at."""
-    target: Any = module
+    source: Any = module
     owner = module.__name__
     for name in attributes:
         try:
-            target = getattr(target, name)
+            target = getattr(source, name)
         except AttributeError:
-            raise KeyResolutionError(path, _no_attribute(module, owner, name)) from None
+            raise KeyResolutionError(path, _no_attribute(source, owner, name)) from None
+        source = target
         owner = f"{owner}.{name}"
-    return target
+    return source
 
 
-def _no_attribute(module: ModuleType, owner: str, name: str) -> str:
-    """Explain a missing attribute, naming the cycle when that is what it is."""
-    if _initialising(module):
+def _no_attribute(source: Any, owner: str, name: str) -> str:
+    """Explain a missing attribute, naming the cycle when that is what it is.
+
+    Only a module can be mid-import, and only the step that reads off the
+    module itself can be the cycle; a name missing from an object further along
+    the path is missing for its own reasons.
+    """
+    if isinstance(source, ModuleType) and _initialising(source):
         return (
-            f"{module.__name__!r} is still executing its own import, so {name!r} does not "
+            f"{owner!r} is still executing its own import, so {name!r} does not "
             f"exist yet. The lookup ran during that import: move it inside a function, so "
             f"it runs once the module is loaded"
         )
@@ -207,9 +221,21 @@ def ref(path: str, /) -> Any:
         raise TypeError(f"ref() expects an import path as a string, got {type(path).__name__}")
     _validate(path)
     created = _Ref(path)
+    _remember(created)
+    return created
+
+
+def _remember(created: _Ref) -> None:
+    """Hold a weak entry for resolve_refs(), sweeping the dead ones now and then.
+
+    The sweep is here rather than in a collection callback, which would have to
+    take this lock from whichever thread happened to be collecting, including
+    one already holding it.
+    """
     with _lock:
         _created.append(weakref.ref(created))
-    return created
+        if len(_created) % _SWEEP_EVERY == 0:
+            _created[:] = [holder for holder in _created if holder() is not None]
 
 
 def resolve_refs() -> None:
