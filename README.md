@@ -55,7 +55,8 @@ with provider("app", db=engine) as ctx:
 - `ref("myapp.context:RequestScope")` for a key that lives in a module you cannot import, because it imports yours.
 - `isolate()` to give a test fresh context state and roll everything back after it.
 - `debug()` to turn a miss into a diagnosis, naming the thread, the task and the line the provider is open on.
-- No dependencies, Python 3.10 and up, and a public API of twenty-one names.
+- `annotate_exceptions()` to put the scope on the traceback, so a failure five frames down says which request it was.
+- No dependencies, Python 3.10 and up, and a public API of twenty-three names.
 
 ## Cost
 
@@ -67,18 +68,18 @@ The first five rows are one function doing one read, reached five ways, so they 
 | operation                                                        |   ns |   × |
 | ---------------------------------------------------------------- | ---: | --: |
 | one read in a function, value passed in as a parameter           |   23 | 1.0 |
-| the same read through `use()`                                    |   64 | 2.8 |
-| the same read through `@inject`                                  |   72 | 3.1 |
-| the same read through a `frozen=True` provider                   |  120 | 5.3 |
-| the same read through a resolved `lazy` provider                 |  144 | 6.3 |
-| `use(Config)` on its own, without the call frame                 |   45 | 2.0 |
-| the same lookup through a `ref()` key                            |  143 | 6.3 |
-| bare `ContextVar.get()`, for reference                           |   16 | 0.7 |
-| `with provider(...)`, enter and exit                             |  563 |  25 |
-| the same with 8 providers already open                           |  652 |  28 |
-| `with provider(lazy(...))`, entered and exited unread            | 1536 |  67 |
-| `with provider(..., extend=True)`, over an 8-attribute namespace | 1706 |  74 |
-| `wrap(fn)()`, per call into a thread                             |  536 |  23 |
+| the same read through `use()`                                    |   62 | 2.7 |
+| the same read through `@inject`                                  |   71 | 3.1 |
+| the same read through a `frozen=True` provider                   |  118 | 5.1 |
+| the same read through a resolved `lazy` provider                 |  139 | 6.0 |
+| `use(Config)` on its own, without the call frame                 |   45 | 1.9 |
+| the same lookup through a `ref()` key                            |  147 | 6.4 |
+| bare `ContextVar.get()`, for reference                           |   17 | 0.7 |
+| `with provider(...)`, enter and exit                             |  640 |  28 |
+| the same with 8 providers already open                           |  728 |  32 |
+| `with provider(lazy(...))`, entered and exited unread            | 1609 |  70 |
+| `with provider(..., extend=True)`, over an 8-attribute namespace | 1818 |  79 |
+| `wrap(fn)()`, per call into a thread                             |  537 |  23 |
 
 CPython 3.14.5, arm64.
 
@@ -99,6 +100,7 @@ An extending layer copies the enclosing namespace on top of the registry, so its
 Debug mode has no row because it is not for the hot path.
 `debug()` makes entering a provider read the stack and write to a ledger, and leaves a lookup that hits costing what it always cost.
 `debug(unused=True)` also routes every read through a counting registry, which puts a hit at roughly three times its usual price.
+Exception notes have no row either, because nothing in that path runs until an exception is already leaving a block, and a block that exits cleanly costs one pointer comparison more than it did.
 
 The absolute numbers move with the machine, and the ratios are the part worth reading.
 Regenerate with `make bench ARGS=--write`, which measures on your machine and rewrites the block above.

@@ -20,6 +20,7 @@ from ._errors import NoProviderError, _describe_key
 from ._frozen import _FrozenProxy
 from ._lazy import _is_lazy, _Lazy, _LazyCell, _Resolution
 from ._refs import _is_ref, _key_target, _restore, _snapshot
+from ._report import _annotate
 
 T = TypeVar("T")
 D = TypeVar("D")
@@ -88,12 +89,20 @@ class _Provider(Generic[T]):
     Reusable sequentially, not re-entrant while active.
     """
 
-    __slots__ = ("_block", "_key", "_public", "_token", "_value")
+    __slots__ = ("_annotate", "_block", "_key", "_public", "_token", "_value")
 
-    def __init__(self, key: str | type[Any], value: T, public: Any) -> None:
+    def __init__(
+        self,
+        key: str | type[Any],
+        value: T,
+        public: Any,
+        # Positional, since passing this by keyword costs more per block than the feature does.
+        annotate: bool | None,  # noqa: FBT001
+    ) -> None:
         self._key = key
         self._value = value
         self._public = public
+        self._annotate = annotate
         self._token: Token[dict[str | type[Any], Any]] | None = None
         self._block: int | None = None
 
@@ -124,6 +133,9 @@ class _Provider(Generic[T]):
             block, self._block = self._block, None
             if block is not None:
                 _record_exit(block, failed=exc_type is not None)
+            # After the reset, since restoring the scope must not depend on a user's repr.
+            if exc is not None:
+                _annotate(exc, self._key, self._value, annotate=self._annotate)
 
     # Nothing awaits, but the protocol lets async code spell `async with provider(...)`.
     async def __aenter__(self) -> T:
@@ -147,8 +159,8 @@ class _LazyProvider(_Provider[Any]):
 
     __slots__ = ("_carrier", "_frozen")
 
-    def __init__(self, carrier: _Lazy, *, frozen: bool) -> None:
-        super().__init__(carrier.key, None, None)
+    def __init__(self, carrier: _Lazy, *, frozen: bool, annotate: bool | None) -> None:
+        super().__init__(carrier.key, None, None, annotate)
         self._carrier = carrier
         self._frozen = frozen
 
@@ -186,8 +198,10 @@ class _ExtendingProvider(_Provider[Any]):
 
     __slots__ = ("_frozen", "_name", "_values")
 
-    def __init__(self, name: str, values: dict[str, Any], *, frozen: bool) -> None:
-        super().__init__(name, None, None)
+    def __init__(
+        self, name: str, values: dict[str, Any], *, frozen: bool, annotate: bool | None
+    ) -> None:
+        super().__init__(name, None, None, annotate)
         # The same string as _key, kept narrowed, since only a name can be extended.
         self._name = name
         self._values = values
@@ -232,19 +246,33 @@ class _ExtendingProvider(_Provider[Any]):
 
 @overload
 def provider(
-    name: str, /, *, frozen: bool = ..., extend: bool = ..., **values: Any
+    name: str,
+    /,
+    *,
+    frozen: bool = ...,
+    extend: bool = ...,
+    annotate: bool | None = ...,
+    **values: Any,
 ) -> _Provider[Namespace]: ...
 @overload
-def provider(instance: T, /, *, key: str | type[Any] = ..., frozen: bool = ...) -> _Provider[T]: ...
+def provider(
+    instance: T,
+    /,
+    *,
+    key: str | type[Any] = ...,
+    frozen: bool = ...,
+    annotate: bool | None = ...,
+) -> _Provider[T]: ...
 @overload
 def provider(
-    *, name: str, frozen: bool = ..., extend: bool = ..., **values: Any
+    *, name: str, frozen: bool = ..., extend: bool = ..., annotate: bool | None = ..., **values: Any
 ) -> _Provider[Namespace]: ...
 def provider(
     *args: Any,
     key: str | type[Any] | None = None,
     frozen: bool = False,
     extend: bool = False,
+    annotate: bool | None = None,
     **values: Any,
 ) -> _Provider[Any]:
     """Make a value available to the whole call subtree through use().
@@ -259,6 +287,9 @@ def provider(
     string-named provider lays its values over a copy of the namespace the
     same name already holds instead of shadowing it.  With frozen=True,
     consumers get a read-only view while the yielded object stays writable.
+    With annotate=True, an exception leaving the block carries a note naming
+    what the block provided, and annotate=False keeps this block out of a
+    traceback whatever annotate_exceptions() says.
     """
     target = _target_of(args, values)
     if isinstance(target, str):
@@ -268,7 +299,7 @@ def provider(
                 "provider is already registered under its name"
             )
         if extend:
-            return _ExtendingProvider(target, values, frozen=frozen)
+            return _ExtendingProvider(target, values, frozen=frozen, annotate=annotate)
         registered: str | type[Any] = target
         value: Any = Namespace._named(target, values)  # noqa: SLF001
     else:
@@ -289,11 +320,11 @@ def provider(
                     "provider(key=...) does not apply to a lazy target: lazy() already "
                     "names the key it registers under"
                 )
-            return _LazyProvider(target, frozen=frozen)
+            return _LazyProvider(target, frozen=frozen, annotate=annotate)
         registered = _instance_key(target, key)
         value = target
     public = _FrozenProxy(value) if frozen else value
-    return _Provider(registered, value, public)
+    return _Provider(registered, value, public, annotate)
 
 
 def _target_of(args: tuple[Any, ...], values: dict[str, Any]) -> Any:

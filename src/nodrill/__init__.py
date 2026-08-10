@@ -18,6 +18,7 @@ from ._errors import (
 from ._inject import FromCtx, from_ctx, inject, injected
 from ._lazy import lazy
 from ._refs import ref, resolve_refs
+from ._report import annotate_exceptions
 
 __version__ = "0.2.0"
 """The installed version, as a string."""
@@ -32,6 +33,7 @@ __all__ = [
     "UnusedProviderWarning",
     "__version__",
     "active",
+    "annotate_exceptions",
     "context",
     "debug",
     "explain",

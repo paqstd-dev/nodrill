@@ -244,8 +244,11 @@ provider() signature
 The implementation takes ``*args``, so a positional target wins and a ``name=`` keyword becomes a prefill value, and with no positional the ``name=`` keyword is the key, strings only.
 ``Namespace.__init__(self, /, **values)`` is positional-only for the same reason, so ``Namespace(self=1)`` is legal data.
 
-``frozen``, ``key`` and ``extend`` are the three names that cannot be prefill data, being the function's own parameters.
-That list is the running cost of the design and the reason a fourth one has to argue for itself.
+``frozen``, ``key``, ``extend`` and ``annotate`` are the four names that cannot be prefill data, being the function's own parameters.
+That list is the running cost of the design and the reason each new one has to argue for itself.
+``annotate`` argued this way.
+A process-wide switch alone cannot let a layer holding a credential stay out of a traceback while the rest of the process annotates, and that layer is exactly the one a reader would rather not find in an error tracker, so the override has to be per block.
+A second entry point was rejected here for the same reason it was rejected for ``extend``, since a reader would then need two spellings before they could say what a scope does.
 
 extend=True merges by copying
 -----------------------------
@@ -312,12 +315,34 @@ They are keyed by the provider's ``id``, so the block is not kept alive either.
 Read counting, the ``unused=True`` half, stays off the hot path a different way.
 Instead of a branch in ``use()``, the provider installs a ``dict`` subclass as the registry and that subclass counts what is read out of it, so the cost lands on the contexts a counting provider created and ``use()`` is the function it was.
 
+Notes are written on the way out, and only then
+-----------------------------------------------
+
+``annotate_exceptions()`` attaches a :pep:`678` note in ``_Provider.__exit__``, after the registry token has been reset, because restoring the scope must never depend on a user's ``__repr__``.
+The visible consequence is that a ``__repr__`` calling ``use()`` reads the enclosing scope rather than the one being described, and that a ``__repr__`` which raises is caught, rendered as unprintable, and never allowed to replace the exception already in flight.
+
+The switch is process-wide module state rather than a ContextVar, which makes it the third exception to the state-lives-in-ContextVars rule and so is argued for rather than waved through.
+An exception crosses contexts as it propagates, so a scoped switch would be read in whichever context the block happens to exit in, and the scoped question is already answered by ``annotate=`` on the block itself.
+Unlike the debug ledger this keeps no records and takes no lock, being one boolean written at startup, and ``isolate()`` deliberately does not reset it, for the same reason it does not reset debug recording.
+
+Only the last step of the note path is version dependent, a callable bound once from ``getattr(BaseException, "add_note", ...)``, since notes are 3.11 and up.
+Everything above it, the guard, the flattening and the truncation, runs identically on every supported interpreter, so the builder is exercised by the same tests everywhere and Python 3.10 differs only in that the finished note is dropped.
+Emulating notes there was rejected twice over, since rewriting ``args`` breaks equality and pickling on the user's own exception, and chaining a synthetic exception rewrites the traceback the feature exists to preserve.
+
+Only an ``Exception`` is annotated.
+A ``CancelledError`` passes through every block open in a cancelled task, a ``GeneratorExit`` through every block a collected generator was holding, and a ``SystemExit`` through every block open at a clean exit, so annotating a bare ``BaseException`` would put a growing pile of scope lines on ordinary control flow.
+
+Duplicates are accepted rather than suppressed.
+A provider object reused in a retry loop, over one exception object that escapes every attempt, collects one note per attempt, which is a true record of how many blocks the exception left.
+Suppressing a repeat would need either an equality check against ``__notes__``, which would make a retry read as a single attempt, or a process-wide set of exceptions already annotated, which is more module state than the feature is worth.
+
 Module layout
 -------------
 
 ``_core`` is the registry, holding ``provider``, ``use``, ``set_default``, ``active``, ``Namespace`` and ``isolate``.
 ``_frozen`` and ``_ambient`` hold the two things that share nothing with it but a ContextVar, the read-only proxy and the ambient namespace, both of which are mostly protocol tables and would otherwise dominate the file they sit in.
 ``_debug`` is instrumentation rather than registry, and sits beside ``_core`` because nothing on a successful lookup reads it.
+``_report`` is reporting rather than registry, sharing with ``_core`` only the value a provider is holding, and nothing in it runs until an exception is already leaving a block.
 ``_inject``, ``_concurrency`` and ``_errors`` are the remaining features.
 Nothing under ``nodrill._*`` is public.
 
