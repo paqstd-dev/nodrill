@@ -39,7 +39,7 @@ class Boom:
 
 class NotAString:
     def __repr__(self) -> Any:
-        # The point of the class, and repr() itself is what turns it into a TypeError.
+        # repr() itself is what turns this into a TypeError.
         return 7
 
 
