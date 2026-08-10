@@ -35,8 +35,7 @@ T = TypeVar("T")
 # Distinct from None, which a factory may legitimately return.
 _PENDING = object()
 
-# A lazy value that is not also frozen has to behave as the value would, so
-# these go through where the frozen proxy blocks them.
+# An unfrozen lazy value behaves as the value would, so these pass where frozen blocks them.
 _MUTATING: dict[str, Callable[..., Any]] = {
     "__setitem__": operator.setitem,
     "__delitem__": operator.delitem,
@@ -144,13 +143,11 @@ class _Resolution:
         if self.owner == thread:
             raise _self_reference_error(self.key)
         self.owner = thread
-        # The snapshot is entered at most once, which is what lets one Context object
-        # stand in for the per-call replay wrap() has to do.
+        # Entered at most once, which is what lets one Context stand in for wrap()'s replay.
         try:
             built = self.context.run(self.factory)
         except Exception as exc:
-            # A BaseException stays uncached, since a cancelled task says nothing
-            # about the factory.
+            # Uncached, since a cancelled task says nothing about the factory.
             self.error = exc
             raise
         finally:

@@ -9,12 +9,18 @@ from ._ambient import context
 from ._concurrency import Executor, wrap
 from ._core import Namespace, active, isolate, provider, set_default, use
 from ._debug import debug, explain
-from ._errors import FrozenContextError, KeyResolutionError, NoProviderError
+from ._errors import (
+    FrozenContextError,
+    KeyResolutionError,
+    NoProviderError,
+    UnusedProviderWarning,
+)
 from ._inject import FromCtx, from_ctx, inject, injected
 from ._lazy import lazy
 from ._refs import ref, resolve_refs
 
 __version__ = "0.2.0"
+"""The installed version, as a string."""
 
 __all__ = [
     "Executor",
@@ -23,6 +29,7 @@ __all__ = [
     "KeyResolutionError",
     "Namespace",
     "NoProviderError",
+    "UnusedProviderWarning",
     "__version__",
     "active",
     "context",

@@ -162,9 +162,9 @@ max-complexity = 12
   "PLR2004",          # literal expected values in asserts
   "ARG001", "ARG002", # negative tests keep required-but-unused params
   "BLE001",           # thread harnesses ferry exceptions to the main thread
-  # Nested with and multi-statement raises blocks mirror the provider
-  # semantics under test.
-  "SIM117", "PT012",
+  # Nested with, and multi-statement raises and warns blocks, mirror the
+  # provider semantics under test.
+  "SIM117", "PT012", "PT031",
   "INP001",
   "S301",             # round-trip tests unpickle what they pickled a line earlier
   # NODRILL_DEBUG is read once at import, so proving it works needs a child

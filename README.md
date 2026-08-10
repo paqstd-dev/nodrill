@@ -44,11 +44,11 @@ with provider("app", db=engine) as ctx:
 
 ## What you get
 
-- Typed keys: `use(Config)` is inferred as `Config`, under both mypy and pyright.
+- Typed keys, so `use(Config)` is inferred as `Config` under both mypy and pyright.
 - String namespaces for the values that do not deserve a class, as above.
 - `@inject` to declare the dependency in the signature and still pass it explicitly in a test.
 - `set_default(Config, factory)` for code that has to run outside any provider.
-- Threads and asyncio: tasks inherit the context, `wrap` and `Executor` carry it into threads.
+- Threads and asyncio, where tasks inherit the context and `wrap` and `Executor` carry it into threads.
 - `frozen=True` hands consumers a read-only view while the block keeps a writable object.
 - `extend=True` for a scope that accumulates as the call descends, one layer per `with` block, each unwound on exit.
 - `lazy(Cls, factory)` for a value that costs something to build and only some requests read.
@@ -85,21 +85,25 @@ CPython 3.14.5, arm64.
 <!-- /benchmarks -->
 
 The `×` column is against handing the value in as a parameter, which is the alternative nodrill removes from the signatures in between.
-Reading through `use()` costs a little over the parameter it replaces; `@inject` costs more, because it fills the argument before the body runs; `frozen=True` and `lazy` add a proxy hop to every attribute the consumer touches.
+Reading through `use()` costs a little over the parameter it replaces.
+`@inject` costs more, because it fills the argument before the body runs.
+`frozen=True` and `lazy` add a proxy hop to every attribute the consumer touches.
 A `ref()` key pays for a Python-level hash and one equality check where a class hashes in C, on the lookups that go through a ref and on no others.
 A request that reads a provided value a hundred times spends microseconds in nodrill, against hundreds of microseconds for one round trip to a database.
 
 Entering a provider is the expensive end, because it copies the registry so that sibling tasks stay isolated.
 That copy is proportional to how many providers are open, which the `with provider(...)` rows price at one and at eight, and it happens once per scope rather than once per lookup.
-A lazy provider pays for the cell it allocates on top, which is the trade the feature is for: a microsecond on entry, against a value that is never built at all on the requests that never read it.
+A lazy provider pays for the cell it allocates on top, which is the trade the feature is for, a microsecond on entry against a value that is never built at all on the requests that never read it.
 An extending layer copies the enclosing namespace on top of the registry, so its row grows with how many attributes have accumulated rather than with how many layers are open, and that second copy is what keeps a sibling task from seeing a layer opened after it started.
 
 Debug mode has no row because it is not for the hot path.
-A lookup that hits costs the same either way, and `debug()` makes entering a provider read the stack and write to a ledger.
+`debug()` makes entering a provider read the stack and write to a ledger, and leaves a lookup that hits costing what it always cost.
+`debug(unused=True)` also routes every read through a counting registry, which puts a hit at roughly three times its usual price.
 
 The absolute numbers move with the machine, and the ratios are the part worth reading.
 Regenerate with `make bench ARGS=--write`, which measures on your machine and rewrites the block above.
-A rerun lands within a few percent, so read the digits as approximate; nothing here runs in CI, because timing on a shared runner measures the runner.
+A rerun lands within a few percent, so read the digits as approximate.
+Nothing here runs in CI, because timing on a shared runner measures the runner.
 
 ## Install
 

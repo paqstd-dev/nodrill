@@ -14,7 +14,7 @@ from types import MappingProxyType, TracebackType
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, overload
 
 from ._ambient import _ambient
-from ._debug import _diagnose, _record_enter, _record_exit
+from ._debug import _diagnose, _record_enter, _record_exit, _uncounted
 from ._debug import _state as _debug_state
 from ._errors import NoProviderError, _describe_key
 from ._frozen import _FrozenProxy
@@ -88,13 +88,14 @@ class _Provider(Generic[T]):
     Reusable sequentially, not re-entrant while active.
     """
 
-    __slots__ = ("_key", "_public", "_token", "_value")
+    __slots__ = ("_block", "_key", "_public", "_token", "_value")
 
     def __init__(self, key: str | type[Any], value: T, public: Any) -> None:
         self._key = key
         self._value = value
         self._public = public
         self._token: Token[dict[str | type[Any], Any]] | None = None
+        self._block: int | None = None
 
     def __enter__(self) -> T:
         if self._token is not None:
@@ -102,10 +103,11 @@ class _Provider(Generic[T]):
                 "this provider is already active. Create a separate provider() "
                 "for nested or concurrent with blocks"
             )
-        updated = dict(_registry.get())
+        enclosing = _registry.get()
+        updated = dict(enclosing)
         updated[self._key] = self._public
         if _debug_state.recording:
-            updated = _record_enter(self, self._key, updated)
+            self._block, updated = _record_enter(self._key, enclosing, updated)
         self._token = _registry.set(updated)
         return self._value
 
@@ -118,8 +120,10 @@ class _Provider(Generic[T]):
         token, self._token = self._token, None
         if token is not None:
             _registry.reset(token)
-            if _debug_state.recording:
-                _record_exit(self, failed=exc_type is not None)
+            # Gated on what enter recorded, not on a switch a thread can flip.
+            block, self._block = self._block, None
+            if block is not None:
+                _record_exit(block, failed=exc_type is not None)
 
     # Nothing awaits, but the protocol lets async code spell `async with provider(...)`.
     async def __aenter__(self) -> T:
@@ -157,8 +161,7 @@ class _LazyProvider(_Provider[Any]):
         self._value = _LazyCell(state, frozen=False)
         self._public = _LazyCell(state, frozen=True) if self._frozen else self._value
         yielded = super().__enter__()
-        # After publishing, so a factory reading its own key meets the guard and not
-        # whatever the enclosing scope had under that key.
+        # After publishing, so a factory reading its own key meets the guard, not the outer value.
         state.context = copy_context()
         return yielded
 
@@ -412,9 +415,10 @@ def active() -> Mapping[str | type[Any], Any]:
     """Return a read-only view of the providers active right now.
 
     Keyed exactly as use() looks values up, for debugging and test
-    assertions.  The view is a snapshot and does not track later scopes.
+    assertions.  The view is a snapshot and does not track later scopes, and
+    reading it is not a read of any provider under debug(unused=True).
     """
-    return MappingProxyType(_registry.get())
+    return MappingProxyType(_uncounted(_registry.get()))
 
 
 def set_default(cls: type[T], factory: Callable[[], T] | None) -> type[T]:
@@ -427,8 +431,7 @@ def set_default(cls: type[T], factory: Callable[[], T] | None) -> type[T]:
     key = _key_target(cls)
     if not isinstance(key, type):
         raise TypeError(f"set_default() registers classes, got {type(key).__name__}: {key!r}")
-    # Ahead of the chain below, which a narrowing type checker calls dead code once
-    # callable() has run.
+    # Ahead of the chain below, which a narrowing checker calls dead code after callable().
     if _is_lazy(factory):
         raise TypeError(
             "set_default() takes a plain factory, not what lazy() returns. A registered "

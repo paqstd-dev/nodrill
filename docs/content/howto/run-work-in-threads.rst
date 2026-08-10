@@ -5,7 +5,7 @@ Run work in threads
 
 A plain :class:`threading.Thread` starts with an empty context, so a job that calls ``use()`` inside one fails unless you propagate the context yourself.
 
-This program shows all three cases: the failure, ``wrap`` for a bare thread, and ``Executor`` for a pool.
+This program shows all three cases, the failure, ``wrap`` for a bare thread, and ``Executor`` for a pool.
 
 .. code-block:: python
    :caption: jobs.py
@@ -80,15 +80,16 @@ Notes
 -----
 
 ``wrap`` snapshots at the point where it is called, not where the wrapped callable eventually runs.
-Wrapping at module level binds an empty context; wrap inside the scope you want to carry, as ``wrapped_thread`` does.
+Wrapping at module level binds an empty context.
+Wrap inside the scope you want to carry, as ``wrapped_thread`` does.
 
 The wrapped callable is safe to call from several threads at once.
 Each call replays the snapshot into a fresh context, so two calls never share mutable contextvar state, and a write one call makes stays in that call.
 
-``Executor`` is a :class:`~concurrent.futures.ThreadPoolExecutor` subclass, so it is a drop-in replacement: same constructor, same ``submit``, same ``map``, same shutdown semantics.
+``Executor`` is a :class:`~concurrent.futures.ThreadPoolExecutor` subclass, so it is a drop-in replacement with the same constructor, the same ``submit``, the same ``map`` and the same shutdown semantics.
 Only the context propagation is added.
 
 Results come back through the future, and so do exceptions.
-That is worth remembering for the failure case above: a bare ``Thread`` swallows whatever its target raised, which is why the example ferries the error out through a list.
+That is worth remembering for the failure case above, since a bare ``Thread`` swallows whatever its target raised, which is why the example ferries the error out through a list.
 
 Both helpers propagate the ambient :data:`~nodrill.context` namespace along with the providers, since both live in the same underlying context.

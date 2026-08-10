@@ -41,9 +41,9 @@ Registered factories
        use(Settings).retries           # 10
 
 The factory takes no arguments and returns an instance.
-Passing the class itself, as above, is the common case; any zero-argument callable works, so ``lambda: Settings(retries=env_retries())`` is fine too.
+Passing the class itself, as above, is the common case, and any zero-argument callable works, so ``lambda: Settings(retries=env_retries())`` is fine too.
 
-``set_default`` returns the class it was given, so the registration can be written as a single binding where that reads better:
+``set_default`` returns the class it was given, so the registration can be written as a single binding where that reads better.
 
 .. code-block:: python
 
@@ -53,14 +53,14 @@ The factory runs on every miss
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Each miss constructs a fresh instance.
-The result is never cached:
+The result is never cached.
 
 .. code-block:: python
 
    set_default(Settings, Settings)
    use(Settings) is use(Settings)      # False
 
-A cached instance would be a global mutable singleton, with every stale-state bug that implies: one request's mutation would be the next request's starting point.
+A cached instance would be a global mutable singleton, with every stale-state bug that implies, since one request's mutation would be the next request's starting point.
 Per-miss construction mirrors ``dataclasses.field(default_factory=...)``, and if you really do want one shared object, that is a provider at the top of the program.
 
 Registration is configuration, not state.
@@ -81,7 +81,7 @@ Call-site defaults
 It works for string keys and class keys alike, and it is the only fallback available to string keys.
 Use it where a missing context is a normal condition for this one call, and where the fallback value is a property of the caller rather than of the type.
 
-The default is a value, not a factory: it is evaluated at the call site like any argument, so a mutable default is shared exactly as it would be anywhere else in Python.
+The default is a value rather than a factory, evaluated at the call site like any argument, so a mutable default is shared exactly as it would be anywhere else in Python.
 
 The error
 ---------
@@ -98,7 +98,7 @@ The message names the key that was asked for, lists the keys that are active, su
 For a class key it also mentions ``set_default`` as the other way out.
 
 The exception subclasses :exc:`LookupError`, so ``except LookupError`` catches it alongside ``KeyError`` and ``IndexError``.
-It carries the lookup as data too, for code that needs to act on it:
+It carries the lookup as data too, for code that needs to act on it.
 
 .. code-block:: python
 
@@ -110,7 +110,7 @@ It carries the lookup as data too, for code that needs to act on it:
 Choosing between them
 ---------------------
 
-Reach for ``set_default`` when the class has a sensible standalone value and you would otherwise write the same fallback at a dozen call sites: settings objects, no-op collectors, in-memory stand-ins for a real backend.
+Reach for ``set_default`` when the class has a sensible standalone value and you would otherwise write the same fallback at a dozen call sites, settings objects, no-op collectors, or in-memory stand-ins for a real backend.
 
 Reach for ``default=`` when the absence is local and interesting, when the key is a string, or when the fallback is ``None`` and the caller branches on it.
 

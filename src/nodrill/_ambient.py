@@ -62,6 +62,7 @@ class _AmbientContext:
 
 
 context = _AmbientContext()
+"""An ambient attribute namespace, isolated per thread and per asyncio task."""
 
 
 __all__ = ["context"]

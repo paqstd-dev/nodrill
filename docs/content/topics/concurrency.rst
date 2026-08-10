@@ -28,7 +28,7 @@ A task therefore runs under the providers that were active at creation time, and
 
    await asyncio.gather(handle("acme"), handle("globex"))
 
-The three properties worth stating plainly:
+Three properties are worth stating plainly.
 
 Awaits do not lose context.
    The lookup after an ``await`` sees the same providers as the one before it.
@@ -46,7 +46,7 @@ Plain threads
 -------------
 
 :class:`threading.Thread` does not inherit contextvars.
-A thread started inside a provider block starts with an empty context:
+A thread started inside a provider block starts with an empty context.
 
 .. code-block:: python
 
@@ -89,7 +89,7 @@ Executor
        futures = [pool.submit(job, n) for n in range(10)]
        results = [f.result() for f in futures]
 
-Everything else about it is inherited: the constructor arguments, ``map``, ``shutdown``, the context-manager protocol.
+Everything else about it is inherited, the constructor arguments, ``map``, ``shutdown`` and the context-manager protocol.
 ``map`` goes through ``submit``, so it propagates the context as well.
 
 Each task runs under its own copy, so a worker's writes never leak into another task or back to the submitter.
@@ -99,10 +99,11 @@ Choosing between them
 ~~~~~~~~~~~~~~~~~~~~~
 
 Use ``Executor`` for pools.
-Use ``wrap`` for a callable you hand to something you do not control: a bare ``Thread``, a timer, a third-party scheduler, a C extension's callback slot.
+Use ``wrap`` for a callable you hand to something you do not control, a bare ``Thread``, a timer, a third-party scheduler, or a C extension's callback slot.
 
 Both are thin.
-``wrap`` replays a snapshot into a fresh :class:`~contextvars.Context` on every call; ``Executor.submit`` takes a fresh :func:`~contextvars.copy_context` per task and runs the callable inside it.
+``wrap`` replays a snapshot into a fresh :class:`~contextvars.Context` on every call.
+``Executor.submit`` takes a fresh :func:`~contextvars.copy_context` per task and runs the callable inside it.
 The README's cost table prices that per-call replay, for code that puts a wrapped callable in a hot loop.
 
 .. seealso::

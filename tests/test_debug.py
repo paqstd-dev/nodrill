@@ -6,17 +6,31 @@ import pickle
 import subprocess
 import sys
 import threading
+import warnings
 import weakref
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from typing import Any
 
 import pytest
 
 import nodrill
-from nodrill import FromCtx, NoProviderError, debug, explain, inject, injected, provider, use, wrap
+from nodrill import (
+    FromCtx,
+    NoProviderError,
+    UnusedProviderWarning,
+    active,
+    debug,
+    explain,
+    inject,
+    injected,
+    provider,
+    use,
+    wrap,
+)
+from nodrill._debug import _CLOSED_LIMIT
 
 
 @dataclass
@@ -66,6 +80,34 @@ def in_thread(target: Callable[[], Any], name: str) -> Any:
     thread.join()
     [result] = box
     return result
+
+
+def read_in_its_own_scope() -> Session:
+    """Open a provider on this thread and read it, leaving the caller's block alone."""
+    with provider(Session(tag="theirs")):
+        return use(Session)
+
+
+def hold_open(holding: threading.Event, release: threading.Event) -> None:
+    """Keep a provider open on this thread until the caller says it may go."""
+    with provider(Session(tag="theirs")):
+        holding.set()
+        release.wait()
+
+
+@contextmanager
+def held_on_thread(name: str) -> Iterator[None]:
+    """Hold Session open on another thread for the extent of this block."""
+    holding = threading.Event()
+    release = threading.Event()
+    thread = threading.Thread(target=hold_open, args=(holding, release), name=name)
+    thread.start()
+    holding.wait()
+    try:
+        yield
+    finally:
+        release.set()
+        thread.join()
 
 
 def layer_over_a_namespace() -> int:
@@ -192,6 +234,29 @@ class TestAlreadyClosed:
         assert f"Session was open at {__file__}:{opened}," in str(error)
 
 
+class TestConcurrentTraffic:
+    def test_a_block_open_elsewhere_does_not_mask_this_frame_s_own_exit(self) -> None:
+        """The nearest record explains the miss, not whichever request happens to be live."""
+        with debug(), held_on_thread("request-2"):
+            with provider(Session(tag="mine")):
+                opened = line_above()
+            error = read_session()
+        assert str(error) == (
+            f"{PLAIN}\n"
+            f"\n"
+            f"Session was open at {__file__}:{opened}, on thread 'MainThread'.\n"
+            f"This frame is running after that block closed.\n"
+            f"Fix: do the work inside the block, or bind the callback with nodrill.wrap() inside "
+            f"it, which carries the scope to wherever it runs."
+        )
+
+    def test_two_threads_sharing_a_name_are_still_told_apart(self) -> None:
+        """Threads are compared by identity, so a shared name does not read as one thread."""
+        with debug(), held_on_thread("worker"):
+            error = in_thread(read_session, name="worker")
+        assert "which did not inherit that context" in str(error)
+
+
 class TestTasks:
     async def test_a_task_created_before_the_block_names_both_tasks(self) -> None:
         """An asyncio task that predates the block never snapshotted it, and is told so."""
@@ -220,6 +285,38 @@ class TestTasks:
             f"never snapshotted it.\n"
             f"Fix: create the task inside the provider block, or await the work there."
         )
+
+    async def test_a_sibling_task_s_exit_does_not_explain_this_task_s_miss(self) -> None:
+        """Tasks sharing a thread keep separate records, so one is not told about another."""
+        opened: dict[str, int] = {}
+        errors: dict[str, NoProviderError] = {}
+        ready = asyncio.Event()
+
+        async def request(label: str) -> None:
+            with provider(Session(tag=label)):
+                opened[label] = line_above()
+            await ready.wait()
+            errors[label] = read_session()
+
+        with debug():
+            first = asyncio.create_task(request("first"), name="first")
+            second = asyncio.create_task(request("second"), name="second")
+            await asyncio.sleep(0)
+            ready.set()
+            await asyncio.gather(first, second)
+        for label, error in errors.items():
+            assert f"{__file__}:{opened[label]}, on thread 'MainThread', task {label!r}" in str(
+                error
+            )
+
+    async def test_one_task_keeps_one_identity_across_blocks(self) -> None:
+        """A task is recognised as itself for every block it opens."""
+        with debug():
+            with provider(Session()):
+                opened = line_above()
+            with provider(Other()):
+                error = read_session()
+        assert f"Session was open at {__file__}:{opened}," in str(error)
 
     async def test_the_task_is_named_in_the_report(self) -> None:
         """explain() names the task a block was opened in, not only the thread."""
@@ -273,6 +370,52 @@ class TestLedgerLifetime:
             stack.close()
             assert read_session().diagnosis is None
 
+    def test_the_ledger_forgets_the_oldest_exits(self) -> None:
+        """A process left in debug mode keeps a bounded number of records, newest first."""
+        with debug():
+            with provider("first"):
+                pass
+            for index in range(_CLOSED_LIMIT):
+                with provider(f"scope-{index}"):
+                    pass
+            with pytest.raises(NoProviderError) as evicted:
+                use("first")
+            with pytest.raises(NoProviderError) as kept:
+                use(f"scope-{_CLOSED_LIMIT - 1}")
+        assert evicted.value.diagnosis == (
+            f"'first' was provided somewhere in this process, but debug mode keeps only the "
+            f"{_CLOSED_LIMIT} most recent exits and this one has aged out.\n"
+            f"Fix: narrow the run so fewer provider blocks close between the one you are looking "
+            f"for and the miss."
+        )
+        assert "was open at" in str(kept.value.diagnosis)
+
+    def test_the_note_that_a_record_existed_is_bounded_too(self) -> None:
+        """Nothing in the ledger grows without a limit, the marker for a dropped one included."""
+        with debug():
+            with provider("first"):
+                pass
+            for index in range(2 * _CLOSED_LIMIT + 1):
+                with provider(f"scope-{index}"):
+                    pass
+            with pytest.raises(NoProviderError) as caught:
+                use("first")
+        assert caught.value.diagnosis is None
+
+    def test_a_dropped_record_is_not_confused_with_one_that_never_existed(self) -> None:
+        """A key the ledger aged out reads differently from a key nothing ever provided."""
+        with debug():
+            with provider("first"):
+                pass
+            for index in range(_CLOSED_LIMIT):
+                with provider(f"scope-{index}"):
+                    pass
+            with provider("first"):
+                opened = line_above()
+            with pytest.raises(NoProviderError) as caught:
+                use("first")
+        assert f"'first' was open at {__file__}:{opened}," in str(caught.value.diagnosis)
+
     def test_debug_nests_and_the_inner_block_does_not_turn_it_off(self) -> None:
         """Recording is reference counted, so the outer block keeps it on."""
         with debug(), provider(Session()):
@@ -320,10 +463,20 @@ class TestReport:
                 inner = line_above()
                 report = explain()
         assert report == (
-            f"nodrill debug: 2 provider blocks open, innermost first.\n"
+            f"nodrill debug: 2 provider blocks open, innermost first within each thread.\n"
             f"  Session opened at {__file__}:{inner}, on thread 'MainThread'\n"
             f"  'app' opened at {__file__}:{outer}, on thread 'MainThread'"
         )
+
+    def test_each_thread_reads_as_a_stack_with_this_one_first(self) -> None:
+        """Global sequence alone interleaves the threads, which is what hides a stack."""
+        with debug(), provider("mine-outer"), provider("mine-inner"), held_on_thread("worker"):
+            report = explain()
+        assert [line.split(" opened")[0].strip() for line in report.splitlines()[1:]] == [
+            "'mine-inner'",
+            "'mine-outer'",
+            "Session",
+        ]
 
     def test_one_open_block_is_counted_in_the_singular(self) -> None:
         """The count reads as a sentence for one block as well as for several."""
@@ -334,7 +487,7 @@ class TestReport:
 class TestUnusedProviders:
     def test_a_provider_nothing_read_warns_at_the_with_statement(self) -> None:
         """unused=True reports a dead provider, pointing at the block that opened it."""
-        with pytest.warns(UserWarning, match="never read") as records, debug(unused=True):
+        with pytest.warns(UnusedProviderWarning, match="never read") as records, debug(unused=True):
             with provider(Session()):
                 opened = line_above()
         [record] = records
@@ -357,13 +510,13 @@ class TestUnusedProviders:
 
     def test_a_miss_through_inject_is_not_a_read(self) -> None:
         """Looking for a key that is not there leaves the provider that is there unread."""
-        with pytest.warns(UserWarning, match="never read"), debug(unused=True):
+        with pytest.warns(UnusedProviderWarning, match="never read"), debug(unused=True):
             with provider(Session()), pytest.raises(NoProviderError):
                 needs_other()
 
     def test_an_extending_layer_counts_as_a_read_of_what_it_extends(self) -> None:
         """Laying a layer over a namespace reads it, so only the layer itself is dead."""
-        with debug(unused=True), pytest.warns(UserWarning, match="never read") as records:
+        with debug(unused=True), pytest.warns(UnusedProviderWarning, match="never read") as records:
             layered = layer_over_a_namespace()
         [record] = records
         assert record.lineno == layered
@@ -373,6 +526,59 @@ class TestUnusedProviders:
         with debug(unused=True):
             with pytest.raises(ValueError, match="boom"), provider(Session()):
                 raise ValueError("boom")
+
+    def test_a_shadowed_outer_provider_still_warns(self) -> None:
+        """Reads count per block, so reading the inner value does not vouch for the outer one."""
+        with pytest.warns(UnusedProviderWarning, match="never read") as records, debug(unused=True):
+            with provider(Session(tag="outer")):
+                outer = line_above()
+                with provider(Session(tag="inner")):
+                    use(Session)
+        [record] = records
+        assert record.lineno == outer
+
+    def test_a_read_on_another_thread_does_not_cover_this_block(self) -> None:
+        """Another thread reading its own provider says nothing about this one."""
+        with pytest.warns(UnusedProviderWarning, match="never read") as records, debug(unused=True):
+            with provider(Session(tag="mine")):
+                opened = line_above()
+                in_thread(read_in_its_own_scope, name="worker")
+        [record] = records
+        assert record.lineno == opened
+
+    def test_listing_the_active_providers_is_not_a_read(self) -> None:
+        """active() asks what the scopes hold, which is not the same as reading a value."""
+        with pytest.warns(UnusedProviderWarning, match="never read") as records, debug(unused=True):
+            with provider(Session()):
+                opened = line_above()
+                assert dict(active()) == {Session: Session()}
+        [record] = records
+        assert record.lineno == opened
+
+    def test_a_block_entered_before_counting_started_is_not_warned_about(self) -> None:
+        """Its reads were never counted, so silence is no evidence that nothing read it."""
+        with debug():
+            stack = ExitStack()
+            stack.enter_context(provider(Session()))
+            with debug(unused=True):
+                stack.close()
+
+    def test_a_counted_block_keeps_counting_once_counting_has_stopped(self) -> None:
+        """Counting is process-wide, so another thread must not blind a block to its readers."""
+        stack = ExitStack()
+        with debug():
+            stack.enter_context(debug(unused=True))
+            with provider(Session()):
+                stack.close()
+                with provider(Other()):
+                    use(Session)
+
+    def test_a_key_no_counted_block_provides_reads_without_complaint(self) -> None:
+        """A counting registry inherits no owner for a block that predates counting."""
+        with debug(), provider(Other()):
+            with debug(unused=True), provider(Session()):
+                use(Other)
+                use(Session)
 
     def test_counting_stays_off_without_the_flag(self) -> None:
         """Plain debug() records sites and nothing else, so an unread provider is silent."""
@@ -448,3 +654,17 @@ class TestSurface:
         """Both names are part of the public surface."""
         assert "debug" in nodrill.__all__
         assert "explain" in nodrill.__all__
+
+    def test_the_warning_category_is_exported(self) -> None:
+        """The warning is filterable by kind, which needs the class to be importable."""
+        assert "UnusedProviderWarning" in nodrill.__all__
+        assert issubclass(UnusedProviderWarning, UserWarning)
+
+    def test_the_warning_can_be_silenced_by_category(self) -> None:
+        """Filtering it must not mean matching the text of its message."""
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("error")
+            warnings.filterwarnings("ignore", category=UnusedProviderWarning)
+            with debug(unused=True), provider(Session()):
+                pass
+        assert not caught

@@ -68,7 +68,7 @@ Output, with the absolute paths shortened::
    This frame is running after that block closed.
    Fix: do the work inside the block, or bind the callback with nodrill.wrap() inside it, which carries the scope to wherever it runs.
 
-   nodrill debug: 1 provider block open, innermost first.
+   nodrill debug: 1 provider block open, innermost first within each thread.
      Session opened at missing.py:44, on thread 'MainThread'
 
 Turning it on
@@ -78,7 +78,7 @@ Turning it on
 Recording is global and reference counted, so nesting the block is safe and the innermost one does not turn it off.
 
 It is not for production.
-A lookup that hits costs the same either way, but every provider entered reads the stack and writes a ledger entry.
+Every provider entered reads the stack and writes a ledger entry, while a lookup that hits costs the same either way.
 
 What it can tell you
 --------------------
@@ -100,6 +100,11 @@ Bind the callback with :func:`~nodrill.wrap` inside the block and it carries the
 
 A key no provider in the process ever opened gets no diagnosis, since a typo or a missing block is what the ordinary message already covers with its nearest-match suggestion.
 
+Under load the answer stays about this request.
+The record a miss reads is the one nearest the failing frame, its own task before its own thread before anywhere else, so a sibling request that closed the same key a moment ago does not get blamed for this one.
+Only the 256 most recent exits are kept.
+A key whose record has aged out says so rather than going quiet and reading as a key nothing ever provided.
+
 Finding a provider nothing reads
 --------------------------------
 
@@ -107,11 +112,13 @@ Finding a provider nothing reads
 
 .. code-block:: text
 
-   UserWarning: nodrill: the provider for Session at scope.py:31 was never read, since no
-   use(Session) ran inside the block.
+   UnusedProviderWarning: nodrill: the provider for Session at scope.py:31 was never read,
+   since no use(Session) ran inside the block.
 
 That is usually a key that moved or a layer whose readers went away, and nothing else makes it visible.
-It is off by default even inside debug mode, since a warning changes what a program prints, and a block whose body raised is never blamed.
+Reads are counted per block, so a shadowed provider is reported even when something read the inner one under the same key.
+It is off by default even inside debug mode, since a warning changes what a program prints and a counting read costs roughly three times a plain one, and a block whose body raised is never blamed.
+The warning is an :exc:`~nodrill.UnusedProviderWarning`, so `warnings.filterwarnings` can silence it by category.
 
 .. rubric:: See also
 

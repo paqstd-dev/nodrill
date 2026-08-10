@@ -30,16 +30,12 @@ _PENDING = object()
 # A path is a module part and at least one attribute, so two segments is the minimum.
 _MINIMUM_SEGMENTS = 2
 
-# How many refs may be created between two sweeps of a list below.  A list
-# stays at the live count plus this, however many short-lived refs pass through.
+# Refs created between two sweeps, so a list stays at the live count plus this.
 _SWEEP_EVERY = 64
 
 _lock = threading.Lock()
 
-# The refs a block created, which isolate() rolls back, and the refs a module
-# body created, which it does not.  A module keeps the refs it made and stays
-# imported once the block that first imported it is over, so forgetting them
-# would leave resolve_refs() reporting success over a path nobody checks again.
+# Split because isolate() rolls back what a block created, while a module outlives the block.
 _created: list[weakref.ref[_Ref]] = []
 _imported: list[weakref.ref[_Ref]] = []
 
@@ -77,8 +73,7 @@ class _Ref:
         return target
 
     def __hash__(self) -> int:
-        # The slot is read here rather than through resolve(), because these two
-        # methods are the whole cost of a lookup through a ref.
+        # Read from the slot rather than resolve(), which is the whole cost of a ref lookup.
         target = self._target
         if target is _PENDING:
             target = self._fill()
@@ -93,11 +88,9 @@ class _Ref:
         if other is target:
             return True
         if isinstance(target, str):
-            # A name compares by value, since the hash is the value's and two
-            # equal strings need not be one object.
+            # A name compares by value, since two equal strings need not be one object.
             return other == target
-        # A dict comparing a stored class against a ref reaches this through the
-        # reflected call, which is what makes one entry answer both spellings.
+        # A dict reaches this through the reflected call, so one entry answers both spellings.
         return NotImplemented
 
     def __repr__(self) -> str:

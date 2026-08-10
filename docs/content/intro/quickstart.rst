@@ -105,7 +105,8 @@ Classes are typed.
 Your editor completes ``cfg.url``, and a typo in the attribute name is a type error rather than a runtime one.
 
 Lookups are by exact class.
-Providing a subclass instance does not answer ``use(Base)`` unless you say so with ``provider(instance, key=Base)``; the reasoning is in :doc:`/content/misc/design`.
+Providing a subclass instance does not answer ``use(Base)`` unless you say so with ``provider(instance, key=Base)``.
+The reasoning is in :doc:`/content/misc/design`.
 
 Nesting and shadowing
 ---------------------
@@ -119,7 +120,7 @@ A provider for a key already in scope shadows the outer one, and the outer value
            assert use(Config).url == "inner"
        assert use(Config).url == "outer"
 
-This is what makes per-request and per-tenant overrides work: the outer scope sets a default, an inner block replaces it for a subtree, and nothing has to be restored by hand.
+This is what makes per-request and per-tenant overrides work, where the outer scope sets a default, an inner block replaces it for a subtree, and nothing has to be restored by hand.
 
 When nothing is provided
 ------------------------
@@ -136,9 +137,9 @@ A miss has three answers, tried in order.
 
    use(Config)                          # 3. NoProviderError
 
-``set_default(cls, factory)`` declares the canonical fallback for a class: the factory runs on every miss and returns a fresh instance each time, never a cached singleton.
+``set_default(cls, factory)`` declares the canonical fallback for a class, and the factory runs on every miss and returns a fresh instance each time, never a cached singleton.
 ``default=`` is the local, ``dict.get``-shaped escape hatch, and the only fallback available to string keys.
-With neither, ``use`` raises :exc:`~nodrill.NoProviderError`, which names the key, lists what is active, and suggests the close match:
+With neither, ``use`` raises :exc:`~nodrill.NoProviderError`, which names the key, lists what is active, and suggests the close match.
 
 .. code-block:: text
 
@@ -166,7 +167,7 @@ When you would rather see the dependency in the signature, ``@inject`` fills it 
    report(Config(url="sqlite://"))      # "sqlite://"
 
 ``FromCtx[Config]`` marks the parameter as coming from the context, and ``injected`` is the default that keeps the signature satisfiable when the caller omits it.
-The last line is the point of the design: **an explicitly passed argument always wins**.
+The last line is the point of the design, that **an explicitly passed argument always wins**.
 Tests call the function directly with a fake and never set up a provider.
 
 Threads and tasks
@@ -175,7 +176,7 @@ Threads and tasks
 asyncio needs nothing from you.
 ``create_task`` and ``gather`` snapshot the context natively, so a task sees the providers that were active when it was created, and sibling tasks cannot see each other's.
 
-Plain threads are the exception: :class:`threading.Thread` does not inherit context, so a thread started inside a provider block starts empty.
+Plain threads are the exception, since :class:`threading.Thread` does not inherit context, so a thread started inside a provider block starts empty.
 Two helpers cover it.
 
 .. code-block:: python
@@ -209,6 +210,6 @@ Where to go from here
 ---------------------
 
 You have now seen the whole library.
-The :doc:`topic guides </content/topics/index>` go through each piece properly: what ``frozen=True`` does, how the ambient :data:`~nodrill.context` namespace differs from a provider, what ``@inject`` will and will not accept.
+The :doc:`topic guides </content/topics/index>` go through each piece properly, what ``frozen=True`` does, how the ambient :data:`~nodrill.context` namespace differs from a provider, and what ``@inject`` will and will not accept.
 
 If you would rather read a finished program, the :doc:`how-to guides </content/howto/index>` are complete, runnable files.

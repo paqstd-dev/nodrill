@@ -36,7 +36,6 @@ _T = TypeVar("_T")
 F = TypeVar("F", bound=Callable[..., Any])
 
 # Internal miss sentinel for the generated lookups, never a parameter default.
-# Defaults use the public injected sentinel, so introspection reports something readable.
 _OMITTED = object()
 
 _LEAK_MESSAGE = (
@@ -103,8 +102,12 @@ for _name in _LEAKED_PROTOCOLS:
     setattr(_InjectedSentinel, _name, _make_leak_guard())
 
 
-# Typed Any, so a marked parameter defaulting to it stays satisfiable when callers omit it.
 injected: Any = _InjectedSentinel()
+"""The default for an injectable parameter.
+
+Typed Any, so a marked parameter defaulting to it stays satisfiable when
+callers omit the argument.  Reaching a function body fails loudly.
+"""
 
 
 class _FromCtxMarker:
@@ -133,8 +136,7 @@ class _FromCtxMarker:
 
     def __class_getitem__(cls, item: Any) -> Any:
         if _is_ref(item):
-            # A ref is not a type, so it cannot be the annotated base.  It names
-            # the key instead, which is all injection reads the annotation for.
+            # A ref is not a type, so it names the key instead of being the annotated base.
             return Annotated[Any, cls(item)]
         return Annotated[item, cls()]
 
@@ -216,8 +218,7 @@ def _marker_spec(param_name: str, base: Any, marker: _FromCtxMarker) -> _Marker:
             )
         key = base
     if isinstance(key, str) and attr is None:
-        # A ref naming a string reaches this same rule at the first call, since
-        # nothing here is allowed to import it.
+        # A ref naming a string reaches this rule at the first call, since nothing imports it here.
         attr = param_name
     return _Marker(param_name, key, attr)
 
@@ -500,8 +501,7 @@ def _render_wrapper(
     """
     params = list(sig.parameters.values())
     for param in params:
-        # inspect.Parameter accepts keyword names for positional-only slots,
-        # the way C signatures spell 'from', but a def statement cannot.
+        # inspect.Parameter accepts keyword names for positional-only slots, a def cannot.
         if _reserved(param.name):
             raise TypeError(
                 f"@inject cannot compile {plan.label}: parameter name "
@@ -523,8 +523,7 @@ def _render_wrapper(
     body += _marker_lines(plan.markers, ns)
     body += _by_name_lines(plan, params, ns)
 
-    # The function's own name keeps tracebacks readable.
-    # A name no def can bind, or one that would shadow a helper, falls back to the mangled one.
+    # The function's own name keeps tracebacks readable, unless no def could bind it.
     own = getattr(func, "__name__", "")
     name = (
         own
@@ -563,8 +562,7 @@ def _compile_wrapper(
     return wraps(func)(wrapper)
 
 
-# Registered sources need process-unique filenames, and qualnames repeat.
-# Probing linecache.cache instead would hand out a live wrapper's filename after clearcache().
+# Process-unique, since qualnames repeat and probing linecache breaks after clearcache().
 _SOURCE_IDS = itertools.count(1)
 
 

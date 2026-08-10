@@ -3,7 +3,7 @@
 Topic guides
 ============
 
-One page per concept, each one covering the feature in full: the shapes it takes, the edges it has, and the reasoning where the behaviour is not the obvious one.
+One page per concept, each one covering the feature in full, the shapes it takes, the edges it has, and the reasoning where the behaviour is not the obvious one.
 
 Read them in order for a complete picture of the library, or jump to the one you need.
 

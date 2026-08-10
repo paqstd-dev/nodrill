@@ -5,7 +5,7 @@ Typed, class-keyed contexts
 
 A string key is quick to type and returns an untyped attribute bag.
 A class key returns your object with its static type intact.
-This page is about the second form: what the key actually is, what it does not match, and how it behaves under a type checker.
+This page is about the second form, what the key actually is, what it does not match, and how it behaves under a type checker.
 
 .. contents::
    :local:
@@ -34,7 +34,8 @@ Providing and using by class
    with provider(Config(url="postgres://prod")):
        handler()
 
-Any class works: dataclasses, plain classes, ``NamedTuple`` subclasses, an ``attrs`` class, a Pydantic model, an SQLAlchemy engine. nodrill never constructs it and never inspects it.
+Any class works, dataclasses, plain classes, ``NamedTuple`` subclasses, an ``attrs`` class, a Pydantic model, an SQLAlchemy engine.
+nodrill never constructs it and never inspects it.
 It stores what you gave it and hands the same object back.
 
 A dataclass is the usual choice because it gives you the constructor, the ``repr`` and the field types for free, but nothing in the library requires one.
@@ -43,7 +44,7 @@ Keys are exact
 --------------
 
 The key is exactly ``type(instance)``, and the lookup is exactly the class you ask for.
-Inheritance is not consulted:
+Inheritance is not consulted.
 
 .. code-block:: python
 
@@ -55,12 +56,12 @@ Inheritance is not consulted:
        use(Base)                       # NoProviderError
 
 This is deliberate.
-Context keys are identities rather than hierarchies: an MRO search would make every lookup proportional to the class hierarchy, and it would turn "which provider answers ``use(Base)``" into an ordering question the moment two subclasses are active at once.
+Context keys are identities rather than hierarchies, and an MRO search would make every lookup proportional to the class hierarchy while turning "which provider answers ``use(Base)``" into an ordering question the moment two subclasses are active at once.
 
 The reasoning is in :doc:`/content/misc/design`.
 
 What the rule says is that the key is exact, not that it has to be the concrete class.
-``key=`` names it:
+``key=`` names it.
 
 .. code-block:: python
 
@@ -68,13 +69,13 @@ What the rule says is that the key is exact, not that it has to be the concrete 
        use(Base)                       # the Sub instance
        use(Sub)                        # NoProviderError: one provider, one key
 
-Still one key and one lookup; the only thing that changed is which one.
+Still one key and one lookup, and the only thing that changed is which one.
 
 Protocols
 ~~~~~~~~~
 
 ``key=`` is what makes a :class:`typing.Protocol` usable as a key, and it is the reason to reach for it.
-The consumer then names the capability it needs instead of the class that happens to provide it:
+The consumer then names the capability it needs instead of the class that happens to provide it.
 
 .. code-block:: python
 
@@ -88,9 +89,9 @@ The consumer then names the capability it needs instead of the class that happen
 Nothing checks that the instance satisfies the protocol at runtime, because :func:`isinstance` against a plain ``Protocol`` is not allowed.
 The type checker checks the call site, which is where the mistake would be.
 
-A string key does the same job without the typed return: ``provider(S3Backend(), key="storage")``, then ``use("storage")``.
+A string key does the same job without the typed return, as ``provider(S3Backend(), key="storage")`` and then ``use("storage")``.
 
-Parameterised generics like ``list[str]`` are not keys at all; wrap the value in a small class.
+Parameterised generics like ``list[str]`` are not keys at all, so wrap the value in a small class.
 
 Late-bound keys
 ---------------
@@ -117,7 +118,7 @@ Once it resolves it borrows the target's identity, so a ref and the class it nam
 ``use(ref(...))`` finds what ``provider(instance)`` stored under the class, and ``provider(instance, key=ref(...))`` answers ``use(TheClass)``.
 Providers resolve the ref immediately, so the registry only ever holds the class and :func:`~nodrill.active` shows it.
 
-The typed spelling is the one :data:`~nodrill.FromCtx` already uses, two names for one thing:
+The typed spelling is the one :data:`~nodrill.FromCtx` already uses, two names for one thing.
 
 .. code-block:: python
 
@@ -136,7 +137,7 @@ Both spellings appear in :ref:`howto-refer-to-a-key-you-cannot-import`, along wi
 Several contexts at once
 ------------------------
 
-Providers compose; open as many as the scope needs.
+Providers compose, so open as many as the scope needs.
 
 .. code-block:: python
 
@@ -149,7 +150,8 @@ What a type checker sees
 ------------------------
 
 ``use`` is overloaded.
-A class argument returns that class; a string argument returns :class:`~nodrill.Namespace`; adding ``default=`` widens the return type to include the default.
+A class argument returns that class and a string argument returns :class:`~nodrill.Namespace`.
+Adding ``default=`` widens the return type to include the default.
 
 .. code-block:: python
 
@@ -159,7 +161,7 @@ A class argument returns that class; a string argument returns :class:`~nodrill.
    use("app", default=None)            # Namespace | None
 
 All four hold under mypy in strict mode and under pyright.
-That is the practical argument for class keys: the attribute you read off the result is checked, so a rename breaks the build rather than a request.
+That is the practical argument for class keys, since the attribute you read off the result is checked, so a rename breaks the build rather than a request.
 
 .. seealso::
 

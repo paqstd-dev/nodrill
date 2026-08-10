@@ -30,7 +30,7 @@ The handler takes the scope as an injected parameter, and a helper further down 
 
 
    def middleware(request: Request) -> str:
-       """Enter one provider per request; everything below shares the scope."""
+       """Enter one provider per request, so everything below shares the scope."""
        with provider(RequestScope(request=request)) as scope:
            response = dispatch()
            return f"{response}  [trace: {' > '.join(scope.trace)}]"

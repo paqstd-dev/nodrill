@@ -6,10 +6,10 @@ FAQ
 Is this a service locator, and is that not an anti-pattern?
 -----------------------------------------------------------
 
-It is closer to a scoped dynamic variable than to a service locator: nothing is registered globally by type and nothing is constructed for you.
+It is closer to a scoped dynamic variable than to a service locator, since nothing is registered globally by type and nothing is constructed for you.
 A provider block is a lexical scope with a lifetime, and what it holds is whatever the caller put there.
 
-The criticism the anti-pattern label points at is real, though: a dependency read from a context does not appear in the signature.
+The criticism the anti-pattern label points at is real, though, because a dependency read from a context does not appear in the signature.
 That is why ``@inject`` exists, and why explicit arguments always win.
 Where visibility matters, put the dependency in the signature and let the decorator fill it.
 
@@ -17,7 +17,7 @@ Does it work with FastAPI, Django, Flask, Celery?
 -------------------------------------------------
 
 Yes, and none of them need an integration.
-Open a provider wherever that framework gives you a boundary: middleware, a dependency, a signal, a task's entry point.
+Open a provider wherever that framework gives you a boundary, middleware, a dependency, a signal, or a task's entry point.
 Everything below it, including third-party code, can read from the scope.
 
 There are no framework integrations in the package, deliberately.
@@ -36,7 +36,7 @@ Why is my value missing in a thread?
 
 Because :class:`threading.Thread` does not inherit contextvars.
 That is standard-library behaviour, not something nodrill adds.
-Use :func:`~nodrill.wrap` or :class:`~nodrill.Executor`; see :doc:`/content/topics/concurrency`.
+Use :func:`~nodrill.wrap` or :class:`~nodrill.Executor`, which :doc:`/content/topics/concurrency` covers in full.
 
 Why does use(Base) not find my Sub instance?
 --------------------------------------------
@@ -44,7 +44,7 @@ Why does use(Base) not find my Sub instance?
 Keys are exact types.
 An MRO search would make every lookup proportional to the class hierarchy and would be ambiguous whenever two subclasses are active at once.
 
-Name the key you want instead: ``provider(Sub(), key=Base)`` registers the instance under ``Base``, and ``use(Base)`` finds it.
+Name the key you want instead, so ``provider(Sub(), key=Base)`` registers the instance under ``Base``, and ``use(Base)`` finds it.
 That is also how a consumer depends on a :class:`~typing.Protocol` rather than on a concrete class.
 The reasoning is in :doc:`design`.
 

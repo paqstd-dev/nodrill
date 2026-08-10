@@ -54,7 +54,7 @@ The colon says where the module ends and the attribute begins.
 ``ref("myapp.context.RequestScope")`` works too, resolved from the longest importable prefix.
 
 Nothing else changes.
-The provider side stays exactly what it was, because a ref and the class it names are one key:
+The provider side stays exactly what it was, because a ref and the class it names are one key.
 
 .. code-block:: python
    :caption: myapp/middleware.py
@@ -73,7 +73,7 @@ Keep the static type
 --------------------
 
 ``ref()`` returns a key, not a class, so a checker has nothing to infer from.
-Give it the import it can follow and give the runtime the one it cannot:
+Give it the import it can follow and give the runtime the one it cannot.
 
 .. code-block:: python
    :caption: myapp/models.py
@@ -92,7 +92,7 @@ Give it the import it can follow and give the runtime the one it cannot:
        return use(RequestScope).user_id     # inferred: int
 
 mypy and pyright both read the ``TYPE_CHECKING`` branch and type ``use(RequestScope)`` as ``RequestScope``, while the runtime only ever runs the ``else``.
-It is the same trade :data:`~nodrill.FromCtx` makes, and it works the same way in a signature:
+It is the same trade :data:`~nodrill.FromCtx` makes, and it works the same way in a signature.
 
 .. code-block:: python
 
@@ -129,7 +129,7 @@ When it still fails
 -------------------
 
 A ref cannot make a name exist earlier than it does.
-Reading one at module scope, inside the very import that is still running, fails and says so:
+Reading one at module scope, inside the very import that is still running, fails and says so.
 
 .. code-block:: text
 

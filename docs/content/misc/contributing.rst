@@ -20,7 +20,7 @@ The project uses `uv <https://docs.astral.sh/uv/>`_ with a committed lockfile.
 Checks
 ------
 
-A ``Makefile`` wraps everything; ``make help`` lists the targets.
+A ``Makefile`` wraps everything, and ``make help`` lists the targets.
 
 .. code-block:: bash
 
@@ -45,8 +45,8 @@ Open ``docs/_build/html/index.html`` to read the result of a plain build.
 House style
 -----------
 
-Docstrings are plain PEP 257 prose: an imperative first line, no reStructuredText roles, no bullet lists.
-The reference pages in :doc:`/content/ref/index` carry the detailed descriptions; docstrings stay terse.
+Docstrings are plain PEP 257 prose, an imperative first line, no reStructuredText roles, no bullet lists.
+The reference pages in :doc:`/content/ref/index` carry the detailed descriptions, so docstrings stay terse.
 
 Prose in the docs uses semantic line breaks, one sentence per line, so diffs stay readable.
 

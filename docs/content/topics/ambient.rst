@@ -3,7 +3,7 @@
 The ambient context
 ===================
 
-``nodrill.context`` is an attribute namespace with no scope: set an attribute anywhere, read it anywhere below, isolated per thread and per asyncio task.
+``nodrill.context`` is an attribute namespace with no scope, set anywhere, read anywhere below, isolated per thread and per asyncio task.
 It is the cheap option for breadcrumbs, and it is deliberately weaker than a provider.
 
 .. contents::
@@ -27,7 +27,7 @@ Setting and reading
 There is no block, no key, and no registration.
 Any attribute name works, and the value is visible to everything that runs afterwards in the same thread or task.
 
-Deleting works too, and ``in`` tests membership without raising:
+Deleting works too, and ``in`` tests membership without raising.
 
 .. code-block:: python
 
@@ -39,7 +39,7 @@ Reading a name that was never set raises :exc:`AttributeError` listing the names
 Isolation
 ---------
 
-The namespace is backed by its own :class:`~contextvars.ContextVar`, which gives it the standard-library isolation rules:
+The namespace is backed by its own :class:`~contextvars.ContextVar`, which gives it the standard-library isolation rules.
 
 Threads start empty.
    A new thread sees none of the values set in the thread that started it, because contextvars are not inherited across ``Thread.start()``.
@@ -53,7 +53,7 @@ Writes are unscoped
 -------------------
 
 This is the property that decides when to use it.
-Nothing restores an ambient value at the end of a block:
+Nothing restores an ambient value at the end of a block.
 
 .. code-block:: python
 
@@ -64,9 +64,9 @@ Nothing restores an ambient value at the end of a block:
    context.tenant                       # still "acme"
 
 In a pooled worker thread, that means a value set while handling one job is still there for the next job the same thread picks up.
-For a request id that is harmless noise; for an authenticated tenant it is a data leak.
+For a request id that is harmless noise, and for an authenticated tenant it is a data leak.
 
-The rule of thumb:
+The rule of thumb runs like this.
 
 Use ``provider`` when the value belongs to a scope.
    Requests, transactions, tenants, anything whose lifetime is a block.
@@ -76,7 +76,7 @@ Use ``context`` for what would otherwise be a :class:`threading.local`.
    Correlation ids, a debug flag, the name of the current test.
    Losing or over-keeping one is a nuisance, not a bug.
 
-Adding a scope to the ambient namespace was considered and rejected: it would just be ``provider`` again, with a second spelling.
+Adding a scope to the ambient namespace was considered and rejected, because it would just be ``provider`` again, with a second spelling.
 
 Why it is attribute-only
 ------------------------
@@ -89,7 +89,7 @@ Flask's ``g`` carries ``g.get`` and ``g.pop``, and a user whose value happens to
 Every public method on an attribute bag is a name your application can never use, and the collision cannot be fixed after release.
 Keeping the surface empty means every attribute name in Python is yours.
 
-Per-class fallbacks are a separate feature for the same reason; they live in :func:`~nodrill.set_default`, not on this object.
+Per-class fallbacks are a separate feature for the same reason, living in :func:`~nodrill.set_default` rather than on this object.
 
 .. seealso::
 

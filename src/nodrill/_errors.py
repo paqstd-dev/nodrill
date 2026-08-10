@@ -27,9 +27,7 @@ class NoProviderError(LookupError):
         super().__init__(self._build_message())
 
     def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
-        # args holds the built message, so the default reconstruction would pass
-        # that message as the key.  copy and pickle have to give back the same
-        # exception, since a worker process delivers a failure by pickling it.
+        # args holds the built message, which default reconstruction would pass back as the key.
         return (self.__class__, (self.key, self.active_keys, self.diagnosis))
 
     def _build_message(self) -> str:
@@ -47,8 +45,7 @@ class NoProviderError(LookupError):
                 parts.append(f"Did you mean {close[0]!r}?")
             parts.append(f"Hint: did you forget `with provider({self.key!r})`?")
         else:
-            # A class opens its own provider.  Anything else naming one, a ref
-            # included, is a key rather than a constructor.
+            # A class opens its own provider, while anything else naming one is a key.
             opener = f"{wanted}(...)" if isinstance(self.key, type) else f"instance, key={wanted}"
             parts.append(
                 f"Hint: did you forget `with provider({opener})`? "
@@ -56,8 +53,7 @@ class NoProviderError(LookupError):
                 f"`set_default({wanted}, ...)`."
             )
         message = " ".join(parts)
-        # Below the message rather than instead of it, so with debug mode off the
-        # message is byte for byte what it always was.
+        # Below the message rather than instead of it, so debug mode off reads as it always did.
         return f"{message}\n\n{self.diagnosis}" if self.diagnosis else message
 
 
@@ -79,3 +75,7 @@ class KeyResolutionError(LookupError):
 
 class FrozenContextError(AttributeError):
     """Raised when writing to a context object provided with frozen=True."""
+
+
+class UnusedProviderWarning(UserWarning):
+    """Warned by debug(unused=True) when a block exits with nothing having read it."""
