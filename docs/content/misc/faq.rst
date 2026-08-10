@@ -63,7 +63,7 @@ Entering a provider copies the registry, which holds one entry per active key, s
 ``@inject`` compiles a wrapper mirroring the function's signature at decoration time, so a call binds natively and pays one sentinel check per injectable parameter.
 
 None of that is free, and none of it is likely to be what your profile blames.
-The README carries the current numbers, measured against the same read with the value handed in as a parameter, which is the alternative the library replaces.
+:doc:`/content/misc/performance` carries the current numbers, measured against the same read with the value handed in as a parameter, which is the alternative the library replaces.
 ``benchmarks/bench.py`` in the repository is what produced them, and running it prints the table for your own machine.
 
 Does it work on free-threaded builds?
