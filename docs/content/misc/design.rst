@@ -341,6 +341,12 @@ Only the last step of the note path is version dependent, a callable bound once 
 Everything above it, the guard, the flattening and the truncation, runs identically on every supported interpreter, so the builder is exercised by the same tests everywhere and Python 3.10 differs only in that the finished note is dropped.
 Emulating notes there was rejected twice over, since rewriting ``args`` breaks equality and pickling on the user's own exception, and chaining a synthetic exception rewrites the traceback the feature exists to preserve.
 
+A note names what its own block provided and never what the block inherited.
+For an ``extend=True`` layer that is the values it laid over the copy rather than the merged namespace it registered, and the rule exists because the alternative leaks.
+A layer opened with ``annotate=False`` because it holds a credential is copied by any layer extending it, and printing the merge would put the credential in the traceback that the ``annotate=False`` was written to prevent.
+Inheriting the flag instead was rejected, since the registry holds the namespace rather than the provider that opened it, so the inner block cannot see what the outer one asked for without keeping annotation state on the value itself.
+The price is that an attribute set on an extending layer inside the block is not in its note, which is the same trade the copy already makes in the other direction.
+
 Only an ``Exception`` is annotated.
 A ``CancelledError`` passes through every block open in a cancelled task, a ``GeneratorExit`` through every block a collected generator was holding, and a ``SystemExit`` through every block open at a clean exit, so annotating a bare ``BaseException`` would put a growing pile of scope lines on ordinary control flow.
 

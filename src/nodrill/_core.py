@@ -135,7 +135,11 @@ class _Provider(Generic[T]):
                 _record_exit(block, failed=exc_type is not None)
             # After the reset, since restoring the scope must not depend on a user's repr.
             if exc is not None:
-                _annotate(exc, self._key, self._value, annotate=self._annotate)
+                _annotate(exc, self._key, self._noted(), annotate=self._annotate)
+
+    def _noted(self) -> Any:
+        """Return what a note describes, which is what this block itself provided."""
+        return self._value
 
     # Nothing awaits, but the protocol lets async code spell `async with provider(...)`.
     async def __aenter__(self) -> T:
@@ -183,9 +187,11 @@ class _LazyProvider(_Provider[Any]):
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
-        super().__exit__(exc_type, exc, tb)
-        # The cell belongs to the scope, so holding it here would pin the built value.
-        self._value = self._public = None
+        try:
+            super().__exit__(exc_type, exc, tb)
+        finally:
+            # In a finally, since a repr raising a BaseException would otherwise pin the build.
+            self._value = self._public = None
 
 
 class _ExtendingProvider(_Provider[Any]):
@@ -222,9 +228,15 @@ class _ExtendingProvider(_Provider[Any]):
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
-        super().__exit__(exc_type, exc, tb)
-        # The namespace belongs to the scope, so holding it here would pin a request's data.
-        self._value = self._public = None
+        try:
+            super().__exit__(exc_type, exc, tb)
+        finally:
+            # In a finally, since a repr raising a BaseException would otherwise pin the data.
+            self._value = self._public = None
+
+    def _noted(self) -> Namespace:
+        """Return this layer alone, since the merged copy holds what an enclosing block provided."""
+        return Namespace._named(self._name, self._values)  # noqa: SLF001
 
     def _extended(self, registry: dict[str | type[Any], Any]) -> Namespace:
         """Return a fresh namespace with this layer's values over the enclosing ones."""

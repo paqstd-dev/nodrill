@@ -98,10 +98,15 @@ Choosing which blocks speak
 
 ``annotate=False`` is the answer for a layer holding a credential, a session token or a whole request body.
 ``annotate=True`` is the answer for a service that would rather not turn the switch on globally, and for a test that wants the note without touching process state.
+On Python 3.10 the per-block flag attaches nothing and says nothing about it, since the warning belongs to ``annotate_exceptions()`` and a service using only the flag never calls it.
+
+A note names what its own block provided and never what the block inherited.
+An ``extend=True`` layer therefore reports the values it laid over the copy rather than the whole merged namespace, which is what keeps a credential in the layer it extends out of the traceback, and it means an attribute set on such a layer inside the block does not appear in its note.
 
 A block is named only when the exception actually leaves it.
 A block that catches and swallows says nothing, and a retry loop that lets the same exception object out three times leaves three notes, which is a true record of what happened.
 A single exception instance kept as a module-level constant and raised on every request therefore accumulates a note per request, so raise a fresh exception if you keep one around like that.
+A :func:`~nodrill.lazy` factory that failed does the same on every later read, since its exception is cached and re-raised as the same object, which is already how its traceback grows.
 Only an :exc:`Exception` is annotated, so a :exc:`KeyboardInterrupt`, a :exc:`SystemExit`, a :exc:`GeneratorExit` and an :exc:`asyncio.CancelledError` pass through untouched, being control flow rather than failures.
 
 ``async with`` behaves exactly as ``with`` does, and so does a block entered through :class:`contextlib.ExitStack`.

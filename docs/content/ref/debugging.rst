@@ -120,6 +120,9 @@ annotate_exceptions
    A ``repr`` longer than 200 characters is cut to 200 and ends in three dots.
    A ``repr`` that raises renders as ``<unprintable RequestScope, repr raised ValueError>``, naming the key and the exception type but never its message, and the exception in flight is unaffected.
 
+   A note names what its own block provided and never what the block inherited, so an ``extend=True`` layer reports the values it laid over the copy rather than the merged namespace.
+   That is what keeps a credential in an enclosing layer opened with ``annotate=False`` out of the traceback when an inner layer extends it, and the price is that an attribute set on an extending layer inside the block does not appear in its note.
+
    The value is rendered after the scope is restored, so a ``__repr__`` calling :func:`use` reads the enclosing scope rather than the one being described.
    A :func:`lazy` provider reports the cell's state and never runs the factory, and a ``frozen=True`` provider reports the value rather than the proxy.
 
@@ -138,6 +141,7 @@ annotate_exceptions
 
    ``BaseException.add_note`` is Python 3.11 and up.
    On 3.10 this call warns with a :exc:`RuntimeWarning` and changes nothing, rather than emulating notes by rewriting ``args`` or by chaining a synthetic exception over the traceback.
+   The warning belongs to this call and not to ``provider()``, so a block opened with ``annotate=True`` on 3.10 attaches nothing and says nothing, which is worth knowing for a service that uses the per-block flag and never calls this at all.
 
    :ref:`howto-see-the-context-in-a-traceback` runs it on a whole program.
 

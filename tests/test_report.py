@@ -1,9 +1,11 @@
 import asyncio
 import contextlib
+import gc
 import os
 import subprocess
 import sys
 import warnings
+import weakref
 from collections.abc import Generator, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
@@ -63,6 +65,10 @@ class Chatty:
 class Fatal:
     def __repr__(self) -> str:
         raise KeyboardInterrupt
+
+
+class Held:
+    """A plain object, so a weakref can say whether a scope let go of it."""
 
 
 @dataclass(frozen=True)
@@ -352,12 +358,51 @@ def test_a_frozen_scope_names_the_value_and_not_the_proxy() -> None:
     assert notes(err) == expected("Config(url='x')")
 
 
-def test_an_extending_layer_names_the_merged_namespace() -> None:
+def test_an_extending_layer_names_its_own_values() -> None:
     err = ValueError("boom")
     with pytest.raises(ValueError, match="boom"), provider("audit", reason="bulk import"):
         with provider("audit", extend=True, actor=1, annotate=True):
             raise err
-    assert notes(err) == expected("Namespace('audit', actor=1, reason='bulk import')")
+    assert notes(err) == expected("Namespace('audit', actor=1)")
+
+
+def test_an_extending_layer_never_prints_what_it_inherited() -> None:
+    err = ValueError("boom")
+    with pytest.raises(ValueError, match="boom"):
+        with provider("audit", dsn="postgres://user:hunter2@db", annotate=False):
+            with provider("audit", extend=True, actor=1, annotate=True):
+                raise err
+    assert notes(err) == expected("Namespace('audit', actor=1)")
+    assert "hunter2" not in "".join(notes(err))
+
+
+def test_a_repr_that_kills_the_unwind_still_releases_the_scope() -> None:
+    scope = provider("audit", extend=True, doomed=Fatal(), annotate=True)
+    with contextlib.suppress(KeyboardInterrupt), provider("audit", tag="a"):
+        with scope:
+            # Reached through use(), so no local of this frame keeps the namespace alive.
+            use("audit").built = Held()
+            watch = weakref.ref(use("audit").built)
+            raise ValueError("boom")
+    gc.collect()
+    assert watch() is None
+
+
+def test_a_repr_that_kills_the_unwind_still_releases_a_lazy_build() -> None:
+    built: list[Fatal] = []
+
+    def factory() -> Fatal:
+        made = Fatal()
+        built.append(made)
+        return made
+
+    scope = provider(lazy(Fatal, factory), annotate=True)
+    with contextlib.suppress(KeyboardInterrupt), scope:
+        _ = use(Fatal).__dict__
+        raise ValueError("boom")
+    watch = weakref.ref(built.pop())
+    gc.collect()
+    assert watch() is None
 
 
 def test_one_note_lands_per_block_the_exception_left() -> None:

@@ -32,6 +32,7 @@ provider
    :param annotate: Whether an exception leaving this block carries a note naming what the block provided.
       ``None``, the default, follows :func:`annotate_exceptions`, while ``True`` and ``False`` decide for this block whatever the process-wide switch says.
       ``False`` is how a layer holding a credential stays out of a traceback, and the note format is covered under :func:`annotate_exceptions`.
+      Exception notes are Python 3.11 and up, so on 3.10 ``annotate=True`` attaches nothing, and the warning that says so is on :func:`annotate_exceptions` rather than here.
    :raises TypeError: More than one positional argument, no target at all, a class or a :func:`ref` rather than an instance, keyword values with an instance target, a non-string ``name=``, a ``key=`` that is neither a string nor a class, a ``key=`` beside a :func:`lazy` target, which already names its own key, or ``extend=True`` on anything but a string name.
       On entry, ``extend=True`` over a name that holds something other than a :class:`Namespace`.
    :raises RuntimeError: On entering a provider object that is already active.
@@ -164,6 +165,7 @@ lazy
 
    An :exc:`Exception` is cached and re-raised on every later touch, so a failure does not depend on which frame happened to read first.
    It is the same object each time, so its traceback grows and its ``__context__`` follows the last reader.
+   Under :func:`annotate_exceptions` its notes grow the same way, one per read that escapes an annotated block, since a note records a block the exception left.
    A :exc:`BaseException` is not cached, since a cancelled task says nothing about the factory.
    A factory that reads or returns the key it is building raises :exc:`RuntimeError` rather than recursing, provided it does so on its own thread.
 
