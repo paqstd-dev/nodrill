@@ -287,9 +287,9 @@ def provider(
     string-named provider lays its values over a copy of the namespace the
     same name already holds instead of shadowing it.  With frozen=True,
     consumers get a read-only view while the yielded object stays writable.
-    With annotate=True, an exception leaving the block carries a note naming
-    what the block provided, and annotate=False keeps this block out of a
-    traceback whatever annotate_exceptions() says.
+    annotate decides whether an exception leaving the block carries a note
+    naming what the block provided, where None follows annotate_exceptions()
+    and True or False decides for this block alone.
     """
     target = _target_of(args, values)
     if isinstance(target, str):

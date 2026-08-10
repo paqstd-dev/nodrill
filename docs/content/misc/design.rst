@@ -57,7 +57,7 @@ The factory runs on every miss rather than caching its first result, since a cac
 A registered factory wins over the call-site default, because registration declares the canonical fallback for the class, while the call-site default only says what this one caller can live with.
 
 The defaults table itself is a module-level dict of factories written at import time.
-That is configuration rather than flowing state, and state lives only in ContextVars, with the one further exception argued for below.
+That is configuration rather than flowing state, and state lives only in ContextVars, with the two further exceptions argued for below.
 
 The ambient context object
 --------------------------
@@ -310,7 +310,7 @@ The same argument settles the rest of the shape.
 Recording is process-wide and reference counted rather than scoped, since a per-context switch could not observe a cross-context failure either.
 Writes take a lock and reads do not, because a read only happens on a miss and copies the dict before walking it, so a concurrent write can degrade the message and cannot break it.
 Entries hold the key and the site, never the value, since a debugging aid that keeps request objects alive past their scope is a leak with good intentions.
-They are keyed by the provider's ``id``, so the block is not kept alive either.
+They are keyed by a serial the provider holds until it exits, rather than by its ``id``, which the next provider at that address would reuse.
 
 Read counting, the ``unused=True`` half, stays off the hot path a different way.
 Instead of a branch in ``use()``, the provider installs a ``dict`` subclass as the registry and that subclass counts what is read out of it, so the cost lands on the contexts a counting provider created and ``use()`` is the function it was.
@@ -319,7 +319,11 @@ Notes are written on the way out, and only then
 -----------------------------------------------
 
 ``annotate_exceptions()`` attaches a :pep:`678` note in ``_Provider.__exit__``, after the registry token has been reset, because restoring the scope must never depend on a user's ``__repr__``.
-The visible consequence is that a ``__repr__`` calling ``use()`` reads the enclosing scope rather than the one being described, and that a ``__repr__`` which raises is caught, rendered as unprintable, and never allowed to replace the exception already in flight.
+The visible consequence is that a ``__repr__`` calling ``use()`` reads the enclosing scope rather than the one being described.
+
+Both halves of the attach are guarded, since a diagnostic that damages the failure it describes is worse than no diagnostic.
+A ``__repr__`` raising an ``Exception`` renders as unprintable, and an exception that refuses the note, a frozen dataclass exception among them, goes unannotated rather than being replaced by the ``FrozenInstanceError`` that says so.
+The one thing not caught is a ``BaseException`` out of a ``__repr__``, which matches what a ``lazy`` factory raising one already does.
 
 The switch is process-wide module state rather than a ContextVar, which makes it the third exception to the state-lives-in-ContextVars rule and so is argued for rather than waved through.
 An exception crosses contexts as it propagates, so a scoped switch would be read in whichever context the block happens to exit in, and the scoped question is already answered by ``annotate=`` on the block itself.

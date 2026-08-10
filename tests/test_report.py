@@ -1,5 +1,8 @@
 import asyncio
 import contextlib
+import os
+import subprocess
+import sys
 import warnings
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
@@ -10,7 +13,7 @@ import pytest
 
 import nodrill
 from nodrill import _report, lazy, provider, use
-from nodrill._report import _drop_note, _scope_note
+from nodrill._report import _UNSUPPORTED, _drop_note, _scope_note
 
 # True from 3.11, which is where PEP 678 notes exist at all.
 NOTES = hasattr(BaseException, "add_note")
@@ -55,6 +58,17 @@ class Chatty:
     def __repr__(self) -> str:
         # Never repr'd inside its own block, where this would be the value it is building.
         return f"Chatty({use(Chatty)})"
+
+
+class Fatal:
+    def __repr__(self) -> str:
+        raise KeyboardInterrupt
+
+
+@dataclass(frozen=True)
+class UnyieldingError(Exception):
+    # A frozen dataclass refuses every attribute, __notes__ included.
+    reason: str
 
 
 def notes(exc: BaseException) -> list[str]:
@@ -226,6 +240,27 @@ def test_the_switch_off_is_the_default_and_attaches_nothing() -> None:
     assert notes(err) == []
 
 
+def test_a_fresh_process_starts_with_the_switch_off() -> None:
+    # In a child interpreter, since every test here leaves the switch off behind it.
+    program = (
+        "import nodrill\n"
+        "err = ValueError('boom')\n"
+        "try:\n"
+        "    with nodrill.provider('app', tag='a'):\n"
+        "        raise err\n"
+        "except ValueError:\n"
+        "    print(getattr(err, '__notes__', []))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "NODRILL_DEBUG": "0"},
+    )
+    assert result.stdout.strip() == "[]"
+
+
 def test_a_block_can_stay_out_of_the_traceback_while_the_switch_is_on() -> None:
     err = ValueError("boom")
     with annotating(), pytest.raises(ValueError, match="boom"), provider("app", tag="a"):
@@ -250,6 +285,8 @@ def test_annotate_is_the_fourth_name_that_cannot_be_prefilled() -> None:
 def test_annotate_exceptions_is_exported() -> None:
     assert "annotate_exceptions" in nodrill.__all__
     assert nodrill.annotate_exceptions is _report.annotate_exceptions
+    # Pinned, since the docs and the README both count the surface and have drifted from it.
+    assert len(nodrill.__all__) == 24
 
 
 def test_a_lazy_scope_is_named_without_running_the_factory() -> None:
@@ -301,6 +338,18 @@ def test_one_note_lands_per_block_the_exception_left() -> None:
     assert notes(err) == expected(named, named)
 
 
+def test_an_exception_that_refuses_a_note_keeps_its_own_failure() -> None:
+    err = UnyieldingError("boom")
+    with pytest.raises(UnyieldingError), provider(Config(url="x"), annotate=True):
+        raise err
+    assert notes(err) == []
+
+
+def test_a_base_exception_out_of_a_repr_is_not_caught() -> None:
+    with pytest.raises(KeyboardInterrupt), provider(Fatal(), annotate=True):
+        raise ValueError("boom")
+
+
 def test_a_repr_that_reads_its_own_key_sees_the_enclosing_scope() -> None:
     err = ValueError("boom")
     with pytest.raises(ValueError, match="boom"), provider(Chatty(), annotate=True):
@@ -313,13 +362,16 @@ def test_without_note_support_the_switch_warns_and_nothing_is_attached(
 ) -> None:
     monkeypatch.setattr(_report, "_add_note", _drop_note)
     err = ValueError("boom")
-    with pytest.warns(RuntimeWarning, match="has no effect on Python 3.10"):
-        nodrill.annotate_exceptions()
     try:
+        with pytest.warns(RuntimeWarning) as warned:
+            nodrill.annotate_exceptions()
         with pytest.raises(ValueError, match="boom"), provider("app", tag="a"):
             raise err
     finally:
         nodrill.annotate_exceptions(enabled=False)
+    assert str(warned[0].message) == _UNSUPPORTED
+    # stacklevel=2, so the warning points at the caller rather than into nodrill.
+    assert warned[0].filename == __file__
     assert not hasattr(err, "__notes__")
 
 

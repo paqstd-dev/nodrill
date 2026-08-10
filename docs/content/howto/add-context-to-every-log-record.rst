@@ -58,7 +58,7 @@ A logger's filters run only for records logged through that logger, and a record
 A handler's filters run for every record it emits, which is what "on every line" means.
 
 **The fields are declared rather than discovered.**
-A ``%``-style formatter naming an attribute the record does not carry raises at emit time, which turns a logging call into an application error.
+A ``%``-style formatter naming an attribute the record does not carry fails at emit time, and :meth:`logging.Handler.handleError` swallows it, so the line is dropped and a traceback goes to stderr instead of to the log.
 Listing the fields in the constructor is what lets the filter fill each one with a placeholder when no scope is open, as the first output line shows.
 A structured handler that reads whatever it finds can drop the list and copy ``vars(namespace)`` instead.
 

@@ -74,10 +74,15 @@ The prefix is fixed, so it is one string to search an aggregator for.
 The rendering is bounded and guarded, because a traceback is a bad place to be surprised.
 A ``repr`` spanning several lines is flattened to one, since a note prints at column zero and a second line would carry no prefix.
 A ``repr`` longer than 200 characters is cut to 200 and ends in three dots.
-A ``repr`` that raises is replaced by ``<unprintable RequestScope, repr raised ValueError>``, which names the key and the exception type and never its message, and the exception on its way out is untouched either way.
+A ``repr`` that raises an :exc:`Exception` is replaced by ``<unprintable RequestScope, repr raised ValueError>``, which names the key and the exception type and never its message.
 
 The exception is the same object throughout.
 Its ``args``, its ``__cause__``, its ``__context__`` and its traceback are exactly what they were, and ``__notes__`` is the only thing that changed.
+An exception that refuses the note, a frozen dataclass exception among them, keeps its own failure and simply goes unannotated, since the failure on its way out is worth more than the note describing it.
+The one thing that does get through is a :exc:`BaseException` raised inside a ``__repr__``, which is not caught anywhere, exactly as one raised inside a :func:`~nodrill.lazy` factory is not.
+
+Rendering runs the value's ``__repr__`` while the block is unwinding, which is the one place this library calls your code on an exception path.
+Keep it cheap, and reach for ``annotate=False`` when it is not, since a ``__repr__`` that waits on a lock the raising frame is holding waits forever.
 
 Choosing which blocks speak
 ---------------------------
@@ -86,8 +91,8 @@ Choosing which blocks speak
 
 .. code-block:: python
 
-   with provider(RequestScope(user_id=42, tenant="acme")):        # follows the switch
-       with provider("db", dsn=dsn, annotate=False):              # never in a traceback
+   with provider(RequestScope(user_id=42, tenant="acme")):         # follows the switch
+       with provider("db", dsn=dsn, annotate=False):               # never in a traceback
            with provider("audit", request_id=rid, annotate=True):  # always in one
                ...
 
@@ -96,6 +101,7 @@ Choosing which blocks speak
 
 A block is named only when the exception actually leaves it.
 A block that catches and swallows says nothing, and a retry loop that lets the same exception object out three times leaves three notes, which is a true record of what happened.
+A single exception instance kept as a module-level constant and raised on every request therefore accumulates a note per request, so raise a fresh exception if you keep one around like that.
 Only an :exc:`Exception` is annotated, so a :exc:`KeyboardInterrupt`, a :exc:`SystemExit`, a :exc:`GeneratorExit` and an :exc:`asyncio.CancelledError` pass through untouched, being control flow rather than failures.
 
 ``async with`` behaves exactly as ``with`` does, and so does a block entered through :class:`contextlib.ExitStack`.

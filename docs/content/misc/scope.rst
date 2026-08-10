@@ -44,7 +44,8 @@ No framework integrations.
 No middleware, no plugins, no ASGI helpers.
 
 No global singletons.
-All state lives in :mod:`contextvars`, except the ``set_default`` table, which is configuration written at import time.
+All state that flows with a call lives in :mod:`contextvars`.
+The exceptions are configuration and instrumentation, the ``set_default`` table written at import time, the ledger :func:`~nodrill.debug` keeps while it is on, and the switch :func:`~nodrill.annotate_exceptions` sets at startup.
 
 No lifecycle management.
 Nothing is constructed, cached, pooled, or closed on your behalf.

@@ -123,6 +123,11 @@ annotate_exceptions
    The value is rendered after the scope is restored, so a ``__repr__`` calling :func:`use` reads the enclosing scope rather than the one being described.
    A :func:`lazy` provider reports the cell's state and never runs the factory, and a ``frozen=True`` provider reports the value rather than the proxy.
 
+   Rendering runs the value's ``__repr__`` while the block is unwinding, which is the one place this library calls user code on an exception path.
+   A ``__repr__`` that blocks on a lock the raising frame is holding blocks the unwind with it, so keep one cheap, and use ``annotate=False`` for a value whose ``__repr__`` is neither.
+   An exception that refuses the note, a frozen dataclass exception among them, keeps its own failure and simply goes unannotated.
+   One exception object raised out of the same block on every attempt of a retry loop collects one note per attempt, since a note records a block the exception left rather than a block that was open.
+
    Only an :exc:`Exception` is annotated.
    A :exc:`KeyboardInterrupt`, a :exc:`SystemExit`, a :exc:`GeneratorExit` and an :exc:`asyncio.CancelledError` pass through untouched, being control flow rather than failures, and a cancelled task would otherwise collect a note per open block.
 
@@ -132,7 +137,7 @@ annotate_exceptions
    The lookup path is untouched, and a block that exits without an exception costs one pointer comparison more than it did.
 
    ``BaseException.add_note`` is Python 3.11 and up.
-   On 3.10 this call warns once with a :exc:`RuntimeWarning` and changes nothing, rather than emulating notes by rewriting ``args`` or by chaining a synthetic exception over the traceback.
+   On 3.10 this call warns with a :exc:`RuntimeWarning` and changes nothing, rather than emulating notes by rewriting ``args`` or by chaining a synthetic exception over the traceback.
 
    :ref:`howto-see-the-context-in-a-traceback` runs it on a whole program.
 
