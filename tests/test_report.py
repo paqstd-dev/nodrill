@@ -323,8 +323,6 @@ def test_annotate_is_the_fourth_name_that_cannot_be_prefilled() -> None:
 def test_annotate_exceptions_is_exported() -> None:
     assert "annotate_exceptions" in nodrill.__all__
     assert nodrill.annotate_exceptions is _report.annotate_exceptions
-    # Pinned, since the docs and the README both count the surface and have drifted from it.
-    assert len(nodrill.__all__) == 24
 
 
 def test_a_lazy_scope_is_named_without_running_the_factory() -> None:

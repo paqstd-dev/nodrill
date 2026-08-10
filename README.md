@@ -56,7 +56,7 @@ with provider("app", db=engine) as ctx:
 - `isolate()` to give a test fresh context state and roll everything back after it.
 - `debug()` to turn a miss into a diagnosis, naming the thread, the task and the line the provider is open on.
 - `annotate_exceptions()` to put the scope on the traceback, so a failure five frames down says which request it was.
-- No dependencies, Python 3.10 and up, and a public API of twenty-three names.
+- No dependencies, Python 3.10 and up, and a small public API, all of it importable from the top-level package.
 
 ## Cost
 
