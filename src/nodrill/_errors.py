@@ -29,9 +29,9 @@ class NoProviderError(LookupError):
         self.diagnosis = diagnosis
         super().__init__(self._build_message())
 
-    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
-        # args holds the built message, which default reconstruction would pass back as the key.
-        return (self.__class__, (self.key, self.active_keys, self.diagnosis))
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...], dict[str, Any]]:
+        # args holds the built message, so the fields are respecified and state carries the notes.
+        return (self.__class__, (self.key, self.active_keys, self.diagnosis), self.__dict__)
 
     def _build_message(self) -> str:
         wanted = _describe_key(self.key)
@@ -71,9 +71,28 @@ class KeyResolutionError(LookupError):
         self._problem = problem
         super().__init__(f"ref({path!r}): {problem}")
 
-    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
-        # Both arguments are required, and args holds only the built message.
-        return (self.__class__, (self.path, self._problem))
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...], dict[str, Any]]:
+        # Both arguments are required, and state carries the notes a block attached.
+        return (self.__class__, (self.path, self._problem), self.__dict__)
+
+
+class EnvelopeVersionError(ValueError):
+    """Raised by adopt() when a payload carries a version this release cannot read.
+
+    Carries the payload's version and the supported one as attributes.
+    """
+
+    def __init__(self, version: int, supported: int) -> None:
+        self.version = version
+        self.supported = supported
+        super().__init__(
+            f"this nodrill reads envelope version {supported}, and the payload "
+            f"carries version {version}"
+        )
+
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...], dict[str, Any]]:
+        # It crosses a process boundary by construction, so the notes have to survive the trip.
+        return (self.__class__, (self.version, self.supported), self.__dict__)
 
 
 class FrozenContextError(AttributeError):

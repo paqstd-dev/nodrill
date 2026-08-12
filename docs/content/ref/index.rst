@@ -11,6 +11,7 @@ The whole public surface is the import below, and everything in it comes from th
 .. code-block:: python
 
    from nodrill import (
+       EnvelopeVersionError,
        Executor,
        FromCtx,
        FrozenContextError,
@@ -19,10 +20,12 @@ The whole public surface is the import below, and everything in it comes from th
        NoProviderError,
        UnusedProviderWarning,
        active,
+       adopt,
        annotate_exceptions,
        context,
        debug,
        explain,
+       export,
        from_ctx,
        inject,
        injected,
@@ -31,6 +34,7 @@ The whole public surface is the import below, and everything in it comes from th
        provider,
        ref,
        resolve_refs,
+       set_codec,
        set_default,
        use,
        wrap,

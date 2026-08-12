@@ -10,6 +10,7 @@ from ._concurrency import Executor, wrap
 from ._core import Namespace, active, isolate, provider, set_default, use
 from ._debug import debug, explain
 from ._errors import (
+    EnvelopeVersionError,
     FrozenContextError,
     KeyResolutionError,
     NoProviderError,
@@ -17,6 +18,7 @@ from ._errors import (
 )
 from ._inject import FromCtx, from_ctx, inject, injected
 from ._lazy import lazy
+from ._portable import adopt, export, set_codec
 from ._refs import ref, resolve_refs
 from ._report import annotate_exceptions
 
@@ -24,6 +26,7 @@ __version__ = "0.3.0"
 """The installed version, as a string."""
 
 __all__ = [
+    "EnvelopeVersionError",
     "Executor",
     "FromCtx",
     "FrozenContextError",
@@ -33,10 +36,12 @@ __all__ = [
     "UnusedProviderWarning",
     "__version__",
     "active",
+    "adopt",
     "annotate_exceptions",
     "context",
     "debug",
     "explain",
+    "export",
     "from_ctx",
     "inject",
     "injected",
@@ -45,6 +50,7 @@ __all__ = [
     "provider",
     "ref",
     "resolve_refs",
+    "set_codec",
     "set_default",
     "use",
     "wrap",

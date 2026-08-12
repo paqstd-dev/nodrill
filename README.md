@@ -53,6 +53,7 @@ How the value is handed out is the provider's decision.
 
 Reading it is `use()` anywhere below, or `@inject` to put the dependency in the signature where a test can still pass it explicitly.
 Tasks inherit the context, `wrap` and `Executor` carry it into threads, and `set_default(Config, factory)` answers a read that ran outside every provider.
+Past the edge of the process, where nothing can be carried by reference, `export("trace")` renders the providers you name as a plain dict that JSON holds and `adopt(payload)` opens them again in the worker.
 
 When it goes wrong, `debug()` turns a miss into a diagnosis naming the thread, the task and the line the provider is open on, and `annotate_exceptions()` puts the scope on the traceback.
 `isolate()` gives a test fresh context state and rolls it back afterwards.

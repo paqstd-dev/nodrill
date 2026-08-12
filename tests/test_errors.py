@@ -6,7 +6,14 @@ from typing import Any
 
 import pytest
 
-from nodrill import KeyResolutionError, NoProviderError, provider, set_default, use
+from nodrill import (
+    EnvelopeVersionError,
+    KeyResolutionError,
+    NoProviderError,
+    provider,
+    set_default,
+    use,
+)
 
 
 @dataclass
@@ -93,6 +100,24 @@ class TestErrorsSurviveATrip:
     def test_key_resolution_error_copies_back_to_itself(self) -> None:
         original = KeyResolutionError("myapp.context:Scope", "no such attribute")
         assert str(copy.copy(original)) == str(original)
+
+    @pytest.mark.skipif(not hasattr(BaseException, "add_note"), reason="notes are 3.11 and up")
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda: NoProviderError("database"),
+            lambda: KeyResolutionError("myapp.context:Scope", "no such attribute"),
+            lambda: EnvelopeVersionError(2, 1),
+        ],
+        ids=["no-provider", "key-resolution", "envelope-version"],
+    )
+    def test_an_error_carries_its_notes_across(self, make: Callable[[], Exception]) -> None:
+        """The scope annotate_exceptions() attached in the worker is why the trip is taken."""
+        original = make()
+        # Ignored rather than guarded, since mypy reads this at 3.10, where notes do not exist.
+        original.add_note("nodrill scope: Namespace('trace')")  # type: ignore[attr-defined]
+        restored = pickle.loads(pickle.dumps(original))
+        assert restored.__notes__ == ["nodrill scope: Namespace('trace')"]
 
 
 class TestSetDefault:
