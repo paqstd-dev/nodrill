@@ -89,12 +89,13 @@
             asyncio inherits the context by itself, so a task created inside a
             provider block already sees it. Plain threads do not, and that is
             where a request id usually disappears from the logs. Two helpers
-            close the gap.
+            close the gap, and a third pair carries it past the process.
           </p>
           <ul class="nd-feature-bullets">
             <li>{{ check() }} <code>wrap</code> binds a callable to the context active right now</li>
             <li>{{ check() }} <code>Executor</code> is a <code>ThreadPoolExecutor</code>, so <code>submit</code> and <code>map</code> are unchanged</li>
             <li>{{ check() }} A worker's writes stay in the worker, and siblings stay isolated</li>
+            <li>{{ check() }} <code>export</code> and <code>adopt</code> carry a copy onto a queue or into a Celery worker</li>
           </ul>
         </div>
         <div class="nd-mock">

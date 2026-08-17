@@ -28,7 +28,7 @@ The program below is both halves at once, with a :class:`queue.Queue` standing i
    def run_next() -> None:
        """The consumer side, which opens it again around the work."""
        message = json.loads(broker.get())
-       with adopt(message["nodrill_ctx"]):
+       with adopt(message["nodrill_ctx"], only=("trace", "audit")):
            handle(message["job"])
 
 
@@ -79,7 +79,22 @@ For Celery the same two lines go in the task's own signature and body.
 Nothing about that is Celery-specific, which is why it is two lines here rather than an integration in the package.
 The same two work for RQ's ``enqueue``, for Dramatiq's ``send``, and for a table of pending rows you poll yourself.
 
+``only`` names what the consumer expects, and without it the message decides which namespaces open.
+Every name a payload carries shadows a provider of that name for the length of the block, so a producer that starts sending ``auth`` overrides the worker's own ``auth`` and nothing says it happened.
+Naming the two you read costs one argument and makes the message unable to reach anything else.
+
 A worker that runs the same code for adopted and un-adopted messages wants ``use("trace", default=...)`` rather than a bare ``use``, since a message enqueued by an older producer has no context in it.
+The default has to carry every attribute the code below reads, so it is a module-level namespace rather than a bare one.
+
+.. code-block:: python
+
+   NO_TRACE = Namespace(request_id=None, tenant=None)
+
+   def handle(job: str) -> None:
+       trace = use("trace", default=NO_TRACE)
+       print(f"{job} for {trace.request_id}")
+
+``use("trace", default=Namespace())`` looks like the same thing and is not, since an empty namespace has no ``request_id`` either and the read fails one line later with an :exc:`AttributeError` instead of the ``None`` the caller wanted.
 
 The payload is JSON, so it is readable in the broker's own inspector.
 That is why the envelope is a plain dict rather than a pickle.
@@ -88,3 +103,5 @@ That is why the envelope is a plain dict rather than a pickle.
 
    :doc:`/content/howto/carry-context-into-a-process-pool` for the same shape inside one program.
    :doc:`/content/howto/carry-context-over-http` for a boundary whose format is fixed by somebody else.
+   :doc:`/content/howto/carry-an-object-across-a-boundary` for the value ``export`` refuses.
+   :doc:`/content/ref/concurrency` for the envelope's shape and the whole contract.

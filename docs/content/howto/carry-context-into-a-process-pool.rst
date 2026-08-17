@@ -69,4 +69,5 @@ If a value cannot make the trip, ``export`` says so at the boundary and names th
 .. seealso::
 
    :doc:`/content/howto/carry-context-onto-a-queue` for the same shape where the two halves are separate programs.
+   :doc:`/content/howto/carry-an-object-across-a-boundary` for the value ``export`` refuses.
    :doc:`/content/topics/concurrency` for the boundaries that need no copy at all.

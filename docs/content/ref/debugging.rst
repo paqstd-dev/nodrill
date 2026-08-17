@@ -88,6 +88,15 @@ explain
         Session opened at web.py:42, on thread 'worker-3', task 'request-18'
 
    Blocks opened on other threads and in other tasks are listed too, which is the reason to read this rather than :func:`active`.
+
+   A process with a codec registered says so on a line of its own, above the blocks and whether or not recording is on.
+
+   .. code-block:: text
+
+      nodrill codec: dump and load registered.
+
+   That line is the only way to ask which halves :func:`set_codec` holds, which is the first thing to check when a value arrived in its encoded form.
+   A process with no codec prints nothing extra.
    The reader's own thread comes first, and a thread's blocks stay together, since a global ordering by age would interleave them and leave no stack readable anywhere.
    Outside debug mode nothing is recorded, and the returned string says so.
 

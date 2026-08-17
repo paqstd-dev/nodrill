@@ -102,6 +102,40 @@ Test the two paths deliberately, asserting that the bare thread raises :exc:`~no
 
 Exceptions raised inside a thread do not propagate to the caller, so ferry them back through a list, as above, or the assertion will pass no matter what the thread did.
 
+Testing code that adopts
+------------------------
+
+A task body written as ``with adopt(payload):`` needs a payload, and there are two ways to make one.
+
+Build it with :func:`~nodrill.export` inside a provider block when the test is about the round trip, since that is the payload a real producer sends.
+Write the envelope literally when the test is about the consumer alone, which keeps the fixture readable and lets it carry exactly the wrong thing on purpose.
+
+.. code-block:: python
+
+   def envelope(**values):
+       """Return a one-namespace envelope, for tests that do not go through export()."""
+       return {"v": 1, "ctx": {"trace": values}}
+
+
+   def test_handler_reads_the_adopted_id():
+       with adopt(envelope(request_id="req-42")):
+           assert handle() == "req-42"
+
+A literal fixture pins the version, so a test suite full of them is a place the envelope's own version number goes stale.
+That is the same trade the HTTP recipe makes, as long as the round-trip test above exists somewhere too.
+
+:func:`~nodrill.isolate` does not clear the codec, so a test that registers one clears it itself.
+
+.. code-block:: python
+
+   @pytest.fixture
+   def actor_codec():
+       nodrill.set_codec(dump=dump, load=load)
+       yield
+       nodrill.set_codec()
+
+Without that fixture the codec leaks into every later test in the process, and because the suite is order-shuffled the failure lands on whichever test ran next rather than on the one that registered it.
+
 .. seealso::
 
    :doc:`/content/howto/test-injected-code` for a worked example.

@@ -78,6 +78,13 @@ class Tenant(str, Enum):
     ACME = "acme"
 
 
+class Labelled(nodrill.Namespace):
+    """A namespace with a method, which is why somebody would subclass one."""
+
+    def greet(self) -> str:
+        return "hi"
+
+
 def adopted_request_id(payload: dict[str, Any]) -> str:
     """Adopt a payload and read one attribute, which is the worker half of a round trip."""
     with adopt(payload):
@@ -200,11 +207,22 @@ class TestRefusedNames:
         with pytest.raises(TypeError, match="string provider names, got int"):
             export(7)  # type: ignore[arg-type]
 
+    def test_a_name_that_only_subclasses_str_does_not_travel(self) -> None:
+        """The name becomes a payload key, so it is exact like every other type here."""
+        with pytest.raises(TypeError, match="string provider names, got Tenant"):
+            export(Tenant.ACME)
+
     def test_an_instance_under_a_string_key_does_not_travel(self) -> None:
         """provider(instance, key='db') puts a live object under a name, and it stays here."""
         with provider(Session(dsn="postgres://"), key="db"):
             with pytest.raises(TypeError, match="'db' provides an instance of Session"):
                 export("db")
+
+    def test_a_namespace_subclass_does_not_travel(self) -> None:
+        """A subclass arrives as a plain namespace, which is what values are refused for."""
+        with provider(Labelled(request_id="r-1"), key="trace"):
+            with pytest.raises(TypeError, match="an instance of Labelled, which subclasses"):
+                export("trace")
 
 
 class TestRefusedValues:
@@ -212,28 +230,64 @@ class TestRefusedValues:
         ("value", "named"),
         [
             (Session(dsn="postgres://"), "Session"),
-            ((1, 2), "tuple"),
             (b"raw", "bytes"),
             ({"a"}, "set"),
             (Decimal("1.5"), "Decimal"),
             (uuid4(), "UUID"),
-            (Level.HIGH, "Level"),
-            (Tenant.ACME, "Tenant"),
         ],
     )
     def test_a_value_that_would_not_come_back_as_itself_is_refused(
         self, value: Any, named: str
     ) -> None:
-        """Exact types only, so a subclass is refused rather than flattened to its base."""
+        """A type JSON has nowhere to put is refused, and the refusal names the codec."""
         with provider("trace", conn=value):
             with pytest.raises(TypeError, match=f"conn is of type {named}, which does not"):
                 export("trace")
+
+    @pytest.mark.parametrize(
+        ("value", "named", "base"),
+        [(Level.HIGH, "Level", "int"), (Tenant.ACME, "Tenant", "str")],
+    )
+    def test_a_subclass_of_a_portable_type_is_told_which_base_it_would_arrive_as(
+        self, value: Any, named: str, base: str
+    ) -> None:
+        """Being told a str is portable while holding a str reads as a bug in the library."""
+        with provider("trace", conn=value):
+            with pytest.raises(
+                TypeError, match=f"conn is of type {named}, which subclasses {base}"
+            ):
+                export("trace")
+
+    def test_a_tuple_is_told_that_a_json_array_is_a_list(self) -> None:
+        """The commonest near miss, where the repair is one call rather than a codec."""
+        with provider("trace", conn=(1, 2)):
+            with pytest.raises(TypeError, match=r"a JSON array is a list. Write list\(value\)"):
+                export("trace")
+
+    def test_the_refusal_names_the_codec_on_the_way_out(self) -> None:
+        """A diagnosis with no next step sends a reader to the source to find set_codec."""
+        with provider("trace", conn=uuid4()):
+            with pytest.raises(TypeError, match="A codec registered with set_codec"):
+                export("trace")
+
+    def test_the_refusal_does_not_name_the_codec_on_the_way_in(self) -> None:
+        """A consumer cannot rewrite the value, so it is told what the producer has to do."""
+        with pytest.raises(TypeError, match="The producer has to send it as a portable value"):
+            with adopt(envelope(conn=object())):
+                pass
 
     def test_a_frozen_value_reports_its_own_type(self) -> None:
         """The refusal names what the consumer sees, not the proxy the registry holds."""
         with provider(Session(dsn="postgres://"), frozen=True):
             with provider("trace", conn=use(Session)):
                 with pytest.raises(TypeError, match="conn is of type Session"):
+                    export("trace")
+
+    def test_a_frozen_view_of_a_container_says_it_is_a_view(self) -> None:
+        """Naming it a dict would list its own type among the portable ones and refuse it anyway."""
+        with provider({"region": "eu"}, key="raw", frozen=True):
+            with provider("trace", meta=use("raw")):
+                with pytest.raises(TypeError, match="meta is a read-only view of a dict"):
                     export("trace")
 
     def test_the_path_names_a_list_element(self) -> None:
@@ -272,8 +326,15 @@ class TestRefusedValues:
     def test_one_container_twice_is_not_a_cycle(self) -> None:
         """Sharing is not recursion, and only the path back to a container counts."""
         shared = ["a"]
-        with provider("trace", first=shared, second=shared):
-            assert export("trace")["ctx"]["trace"] == {"first": ["a"], "second": ["a"]}
+        with provider("trace", first=shared, meta={"x": shared, "y": shared}):
+            values = export("trace")["ctx"]["trace"]
+        assert values == {"first": ["a"], "meta": {"x": ["a"], "y": ["a"]}}
+
+    def test_a_name_the_namespace_owns_is_refused(self) -> None:
+        """A slot beats __dict__, so such a value would read back as the provider's own name."""
+        with provider("trace", _Namespace__label="evil"):
+            with pytest.raises(TypeError, match="'_Namespace__label' is a name the namespace"):
+                export("trace")
 
     def test_bools_travel(self) -> None:
         """Booleans travel, since JSON has them, though bool is an int subclass."""
@@ -333,10 +394,39 @@ class TestAdoptedPayloads:
             with adopt(payload):
                 pass
 
-    def test_an_adopted_payload_is_checked_the_way_an_exported_one_is(self) -> None:
-        """A payload from a broker is input, and the same rule reads it."""
-        with pytest.raises(TypeError, match=r"adopt\('trace'\): tags\[0\] is of type tuple"):
-            with adopt(envelope(tags=[(1, 2)])):
+    def test_a_payload_is_checked_in_the_call_rather_than_at_the_with(self) -> None:
+        """A consumer that catches a bad envelope must not also catch its own block failing."""
+        with pytest.raises(TypeError, match=r"adopt\(\) expects the mapping export\(\) returned"):
+            adopt("not a payload")  # type: ignore[arg-type]
+
+    def test_only_names_the_namespaces_this_consumer_expects(self) -> None:
+        """The payload chooses what opens unless the consumer says otherwise."""
+        payload = {"v": 1, "ctx": {"trace": {"request_id": "r-1"}, "auth": {"user": "attacker"}}}
+        with provider("auth", user="real"):
+            with adopt(payload, only=("trace",)):
+                assert use("trace").request_id == "r-1"
+                assert use("auth").user == "real"
+
+    def test_only_skips_a_name_the_payload_does_not_carry(self) -> None:
+        """It names what may open, not what has to be there, since a producer may send less."""
+        with adopt(envelope(request_id="r-2"), only=("trace", "audit")):
+            assert "audit" not in dict(active())
+
+    def test_a_skipped_namespace_is_never_walked(self) -> None:
+        """A name this consumer did not ask for is not its business, malformed or not."""
+        payload = {"v": 1, "ctx": {"trace": {"request_id": "r-3"}, "junk": {"conn": object()}}}
+        with adopt(payload, only=("trace",)):
+            assert use("trace").request_id == "r-3"
+
+    def test_a_bare_string_is_not_a_collection_of_names(self) -> None:
+        """only='trace' reads as one name per character, which would silently open nothing."""
+        with pytest.raises(TypeError, match=r"a bare string reads as one name per character"):
+            adopt(envelope(request_id="r-4"), only="trace")
+
+    def test_a_payload_cannot_name_an_attribute_the_namespace_owns(self) -> None:
+        """A slot beats __dict__, so getattr and a re-export would disagree about the value."""
+        with pytest.raises(TypeError, match="'_Namespace__label' is a name the namespace"):
+            with adopt(envelope(_Namespace__label="evil")):
                 pass
 
 
@@ -347,17 +437,12 @@ class TestMalformedEnvelopes:
             with adopt({"v": 2, "ctx": {}}):
                 pass
 
-    def test_the_version_error_carries_both(self) -> None:
-        """A consumer that logs and runs on needs the numbers, not the sentence."""
-        error = EnvelopeVersionError(2, 1)
-        assert (error.version, error.supported) == (2, 1)
-        assert isinstance(error, ValueError)
-
     def test_the_version_error_survives_a_pickle(self) -> None:
-        """It is raised at a process boundary, so it travels back over one."""
+        """It is raised at a process boundary, so it travels back over one carrying both numbers."""
         restored = pickle.loads(pickle.dumps(EnvelopeVersionError(2, 1)))
         assert (restored.version, restored.supported) == (2, 1)
         assert str(restored) == str(EnvelopeVersionError(2, 1))
+        assert isinstance(restored, ValueError)
 
     @pytest.mark.parametrize(
         ("payload", "message"),
@@ -369,6 +454,7 @@ class TestMalformedEnvelopes:
             ({"v": 1}, "carries its namespaces under 'ctx'"),
             ({"v": 1, "ctx": []}, "carries its namespaces under 'ctx'"),
             ({"v": 1, "ctx": {7: {}}}, "'ctx' is keyed by int"),
+            ({"v": 1, "ctx": {Tenant.ACME: {}}}, "'ctx' is keyed by Tenant"),
             ({"v": 1, "ctx": {"trace": "r-1"}}, "'ctx' holds str under 'trace'"),
             ({"v": 1, "ctx": {"trace": {7: "r-1"}}}, "an attribute name has to be a string, got 7"),
         ],
@@ -442,6 +528,19 @@ class TestCodec:
             with pytest.raises(ZeroDivisionError):
                 export("trace")
 
+    @pytest.mark.skipif(sys.version_info < (3, 11), reason="notes are 3.11 and up")
+    def test_a_codec_failure_is_noted_with_the_call_it_ran_under(self) -> None:
+        """The traceback lands in a comprehension, so which namespace it was is worth saying."""
+        set_codec(dump=boom)
+        nodrill.annotate_exceptions()
+        try:
+            with provider("trace", request_id="r-4"), pytest.raises(ZeroDivisionError) as raised:
+                export("trace")
+        finally:
+            nodrill.annotate_exceptions(enabled=False)
+        attached = getattr(raised.value, "__notes__", ())
+        assert "nodrill codec: raised during export('trace')" in attached
+
     def test_a_dump_returning_something_else_is_refused(self) -> None:
         """A namespace is a mapping of names to values, and the way out is checked for it."""
         set_codec(dump=not_a_mapping)
@@ -466,6 +565,13 @@ class TestCodec:
         with pytest.raises(TypeError, match="the codec returned 7 as a name"):
             with adopt(envelope(request_id="r-5")):
                 pass
+
+    def test_a_dumped_name_has_to_be_a_string_too(self) -> None:
+        """One rule reads both halves, so the way out says what the way in says."""
+        set_codec(dump=lambda values: {**values, Tenant.ACME: "seven"})
+        with provider("trace", request_id="r-6"):
+            with pytest.raises(TypeError, match=r"the codec returned .+Tenant\.ACME.+ as a name"):
+                export("trace")
 
     def test_a_codec_half_has_to_be_callable(self) -> None:
         """Registering something uncallable fails at startup rather than at the first boundary."""

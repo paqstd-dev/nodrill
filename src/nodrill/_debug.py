@@ -396,25 +396,44 @@ def debug(*, unused: bool = False) -> _DebugMode:
     return _DebugMode(unused=unused)
 
 
+def _codec_lines() -> list[str]:
+    """Return the codec halves registered, which nothing else reports."""
+    # Imported here, since _portable reaches this module through _core and a top import cycles.
+    from ._portable import _codec  # noqa: PLC0415
+
+    halves = [role for role in ("dump", "load") if getattr(_codec, role) is not None]
+    # Only when there is one, so a process with no codec reads as it always did.
+    return [f"nodrill codec: {' and '.join(halves)} registered."] if halves else []
+
+
 def explain() -> str:
     """Return a report of the provider blocks open right now, a thread at a time.
 
     Written for a breakpoint, as print(nodrill.explain()).  Blocks opened
     on other threads and in other tasks are listed too, which is the reason
     to read this rather than active(), and the reader's own thread comes
-    first with its own blocks innermost first.
+    first with its own blocks innermost first.  The codec is named above
+    them, since nothing else in the process reports which halves are
+    registered.
     """
+    codec = _codec_lines()
     if not _state.recording:
-        return (
-            "nodrill debug mode is off, so no provider block is recorded.\n"
-            "Turn it on with `with nodrill.debug():` or with NODRILL_DEBUG=1 in the environment."
+        return "\n".join(
+            [
+                *codec,
+                "nodrill debug mode is off, so no provider block is recorded.",
+                (
+                    "Turn it on with `with nodrill.debug():` or with NODRILL_DEBUG=1 "
+                    "in the environment."
+                ),
+            ]
         )
     here = _where()
     blocks = sorted(_open.copy().values(), key=lambda entry: _listing(entry, here))
     if not blocks:
-        return "nodrill debug: no provider block is open."
+        return "\n".join([*codec, "nodrill debug: no provider block is open."])
     counted = f"{len(blocks)} provider block{'' if len(blocks) == 1 else 's'}"
-    lines = [f"nodrill debug: {counted} open, innermost first within each thread."]
+    lines = [*codec, f"nodrill debug: {counted} open, innermost first within each thread."]
     lines += [
         f"  {_describe_key(entry.key)} opened at {entry.site.file}:{entry.site.line}, "
         f"{_on(entry.where)}"

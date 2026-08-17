@@ -91,7 +91,11 @@ Keeping the surface empty means every attribute name in Python is yours.
 
 Per-class fallbacks are a separate feature for the same reason, living in :func:`~nodrill.set_default` rather than on this object.
 
+The ambient namespace also does not leave the process.
+:func:`~nodrill.export` takes provider names and reads the registry, which this object is deliberately not part of, so a request id kept here reaches a thread and stops at a queue.
+Copy what a boundary needs into a string provider before exporting, or put it in one from the start if it was always going to cross.
+
 .. seealso::
 
    :doc:`providers` for scoped values.
-   :doc:`concurrency` for what crosses a thread boundary.
+   :doc:`concurrency` for what crosses a thread boundary and what crosses a process.

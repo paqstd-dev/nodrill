@@ -5,9 +5,27 @@ Carrying context
 
 .. currentmodule:: nodrill
 
-:class:`threading.Thread` does not inherit context, so ``wrap`` and ``Executor`` carry it across that boundary. asyncio needs neither: tasks snapshot the context natively.
+:class:`threading.Thread` does not inherit context, so ``wrap`` and ``Executor`` carry it across that boundary.
+asyncio needs neither, since a task snapshots the context natively.
 
 Beyond one process nothing can be carried by reference, so ``export`` and ``adopt`` carry a copy of what you name.
+
+The envelope
+------------
+
+:func:`export` returns and :func:`adopt` accepts a mapping of exactly two keys.
+
+.. code-block:: python
+
+   {"v": 1, "ctx": {"trace": {"request_id": "req-42"}}}
+
+``v`` is an :class:`int`, the envelope format's version, and ``ctx`` maps a provider name to a flat mapping of attribute name to value.
+Those two keys are frozen for every future version, so any release can read any payload far enough to report its number, and a namespace named ``v`` cannot collide with the version.
+:func:`adopt` accepts any :class:`~collections.abc.Mapping`, not only a :class:`dict`, which is what lets a decoder hand its own mapping type straight over.
+
+Writing the envelope by hand is supported and the HTTP recipe does it, since a format somebody else owns cannot carry a nodrill envelope whole.
+The cost is that the version becomes yours to keep current, because a hand-written ``{"v": 1, ...}`` still says version 1 after this library moves on.
+Where the values come from providers, ``export`` is the way to build one.
 
 wrap
 ----
@@ -75,25 +93,39 @@ export
 
       TypeError: export('trace'): tags[1] is of type UUID, which does not survive a
       round trip through JSON. A portable value is a str, int, float, bool, None, or
-      a list or dict of those
+      a list or dict of those. A codec registered with set_codec() carries what JSON
+      cannot hold
+
+   A refusal names the base a subclass would arrive as, since being told a ``str`` is portable while holding a ``str`` reads as a fault in the library rather than in the value.
+   An :class:`~enum.IntEnum` member is pointed at ``int(value)``, a :class:`str` enum at ``str(value)``, and a :class:`tuple` is told that a JSON array is a list.
 
    Class-keyed providers do not travel, since a class cannot be reopened on the other side without importing it, and ``export(Config)`` says so.
+   Neither does a :class:`~nodrill.Namespace` subclass provided under a string key, since it would arrive as a plain namespace, the same flattening a value is refused for.
+   An attribute name the namespace itself owns, such as ``_Namespace__label``, is refused too, since a slot beats an instance ``__dict__`` and the value would never be readable.
 
-   The returned lists and dicts are copies, so the envelope is a snapshot of the moment it was taken.
+   The returned lists and dicts are rebuilt rather than referenced, so a write to a provider never reaches an envelope already handed on.
    The registry holds one value per key, so a name resolves to the nearest enclosing provider, which is what :func:`use` would return on the same line.
 
    A name nobody opened raises rather than exporting an empty namespace.
    Where a namespace really is optional, ``"trace" in active()`` is the guard, since :func:`active` is keyed the same way.
+   That guard says the name is taken and not that a namespace is under it, so a name held by an instance still refuses.
+
+   ``frozen=True`` and this feature answer different questions, and the two halves of that pull opposite ways.
+   A provider opened with ``frozen=True`` exports normally, since freezing says who may write and nothing about what may travel.
+   A frozen view held as an attribute is refused, because the value that would arrive is the wrapped object rather than the view.
+
+   Exporting a provider counts as reading it, so a provider that exists only to be carried does not warn under ``debug(unused=True)``.
 
 adopt
 -----
 
-.. function:: adopt(payload)
+.. function:: adopt(payload, *, only=None)
 
    Open the providers an envelope carries, for the length of the block.
+   Returns a context manager.
 
    :raises EnvelopeVersionError: the payload carries a version this release does not read.
-   :raises TypeError: the payload is not an envelope, or a value in it is not portable.
+   :raises TypeError: the payload is not an envelope, a value in it is not portable, or ``only`` is a bare string rather than a collection of names.
    :raises ValueError: a value is a float :mod:`json` cannot represent, or a container holds itself.
       :func:`json.loads` accepts the ``Infinity`` literal, so a payload really can carry one.
 
@@ -104,7 +136,34 @@ adopt
       with adopt(payload):
           handle()                     # use("trace").request_id
 
-   The payload is checked the way :func:`export` checks what it writes, and the whole payload is checked before the first provider opens, so a bad namespace leaves nothing half-adopted.
+   The payload is checked in the call, before the ``with``, and the whole payload is checked before the first provider opens, so a bad namespace leaves nothing half-adopted.
+   Checking in the call is what lets a consumer tell a malformed envelope from a failure in its own block, which matters because the block usually runs the job.
+
+   .. code-block:: python
+
+      try:
+          scope = adopt(message["nodrill_ctx"])
+      except (TypeError, ValueError):
+          log.warning("dropping unreadable context")
+          scope = contextlib.nullcontext()
+      with scope:
+          handle(job)                  # a TypeError from here is not caught above
+
+   The payload decides which namespaces open unless ``only`` names the ones this consumer expects.
+   That asymmetry matters, since :func:`export` lists what leaves while a payload arriving from somewhere else lists what enters, and each name it carries shadows a provider of that name for the length of the block.
+   Where the producer is another team, another deployment or a header a client can write, name what you expect.
+
+   .. code-block:: python
+
+      with adopt(payload, only=("trace",)):
+          handle()                     # a payload naming "auth" opens nothing
+
+   ``only`` names what may open rather than what has to be there, so a name the payload does not carry is not an error and a producer sending less still works.
+   A namespace it skips is never walked, so a value under a name you did not ask for cannot fail the adopt either.
+
+   An adopted namespace is an ordinary one from the read side down, which is what makes it work and also what makes one failure read wrong.
+   A name the payload did not carry raises the usual :exc:`NoProviderError`, whose hint asks whether you forgot ``with provider("trace")``, and in a consumer the answer is that the producer forgot to send it.
+   :func:`debug` cannot help there either, since no block ever opened for that key, so the place to look is the payload and the ``adopt`` call rather than the service you are standing in.
 
    An adopted value is input.
    Nothing here says the payload came from a producer you trust, and a ``tenant`` that arrived this way is authorised the way any other request field is authorised.
@@ -127,11 +186,25 @@ set_codec
    Whatever ``dump`` returns is checked the way any exported value is, so the envelope stays JSON however the codec works inside, and a codec handing back an object of its own fails at the boundary that made it.
    ``load`` runs after the payload has been checked, never before, so a malformed payload is refused without reaching the codec at all.
 
+   ``dump`` reads the values it is handed and never writes into them.
+   The mapping is a fresh one, but the containers inside it are the exporting block's own, so a codec that normalises a list in place rewrites the context of the scope it was called from.
+
+   A hook is handed one namespace at a time and is not told which one, so a codec runs over every namespace the process exports or adopts.
+   Key a lookup table on attribute names that mean the same thing in every namespace, and leave everything else alone, which is the shape both recipes are written in.
+   A ``load`` result is checked only for being a mapping keyed by strings, never for portability, since rebuilding what JSON cannot hold is the whole point of the way in.
+
    Each call states the whole codec, so ``set_codec()`` clears both halves, and a service that only produces or only consumes registers the one half it needs.
+   Registering one half is therefore silent, and a producer whose consumer forgot its ``load`` delivers the encoded form as ordinary data.
+
+   The application owns this call.
+   A library that wants a codec ships ``dump`` and ``load`` as ordinary functions and documents how to chain them, because a second ``set_codec`` replaces what the first registered rather than adding to it, and the half it drops fails far from the call that dropped it.
+   :func:`explain` names the halves registered in the process, which is the only way to ask.
+
    The pair is process-wide configuration rather than something a scope decides, because both ends of a boundary have to agree on the format.
-   :func:`isolate` does not clear it, matching :func:`annotate_exceptions`.
+   :func:`isolate` does not clear it, matching :func:`annotate_exceptions`, so a test that registers one clears it in its own fixture.
 
    An exception raised by your codec propagates as itself.
+   Under :func:`annotate_exceptions` it also carries a note naming the boundary call it ran inside, since the frame it lands on belongs to this library rather than to the codec.
 
    .. warning::
 

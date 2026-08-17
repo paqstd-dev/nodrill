@@ -180,14 +180,51 @@ With pickle
    Never on a broker, an HTTP header, or anything a different deployment can write.
 
 .. code-block:: python
+   :caption: pickled.py
 
+   import json
    import pickle
    from base64 import b64decode, b64encode
+   from dataclasses import dataclass
+   from typing import Any
 
-   set_codec(
-       dump=lambda values: {"pickled": b64encode(pickle.dumps(values)).decode()},
-       load=lambda values: pickle.loads(b64decode(values["pickled"])),
-   )
+   from nodrill import adopt, export, provider, set_codec, use
+
+
+   @dataclass
+   class Actor:
+       id: int
+       name: str
+
+
+   def dump(values: dict[str, Any]) -> dict[str, Any]:
+       """Render the whole namespace as one string the envelope can hold."""
+       return {"pickled": b64encode(pickle.dumps(values)).decode()}
+
+
+   def load(values: dict[str, Any]) -> dict[str, Any]:
+       """Rebuild the namespace dump wrote, taking the payload at its word."""
+       return dict(pickle.loads(b64decode(values["pickled"])))
+
+
+   def main() -> None:
+       set_codec(dump=dump, load=load)          # once, at startup
+
+       with provider("trace", request_id="req-42", actor=Actor(id=7, name="acme")):
+           message = json.dumps(export("trace"))
+       print(list(json.loads(message)["ctx"]["trace"]))
+
+       with adopt(json.loads(message)):
+           print(use("trace").actor, use("trace").request_id)
+
+
+   if __name__ == "__main__":
+       main()
+
+Output::
+
+   ['pickled']
+   Actor(id=7, name='acme') req-42
 
 The base64 is not decoration.
 The envelope has to survive :func:`json.dumps` for the queue and header recipes to keep working, and a ``bytes`` does not, so the codec renders its own output as a string like any other portable value.
@@ -203,6 +240,23 @@ The codec is process-wide and set at startup, because both ends of a boundary ha
 
 Each call to ``set_codec`` states the whole codec, so ``set_codec()`` clears both halves.
 A service that only produces registers ``dump`` alone, and its consumer, which is usually a different program, registers the ``load`` that matches.
+
+The application makes that call and a library never does.
+A second ``set_codec`` replaces what the first registered rather than adding to it, so a library registering at import and an application registering at startup leave whichever ran last, and the half that disappeared fails a long way from the call that dropped it.
+A library with a codec to offer ships ``dump`` and ``load`` as ordinary functions and lets the application chain them, which composes cleanly because each half maps a whole namespace to a whole namespace.
+
+.. code-block:: python
+
+   set_codec(
+       dump=lambda values: mine_dump(theirs_dump(values)),
+       load=lambda values: theirs_load(mine_load(values)),
+   )
+
+:func:`~nodrill.explain` names the halves registered in the process, which is the only way to ask which codec a running service actually holds.
+
+One codec serves every namespace, and a hook is not told which one it is running for.
+Both tables above are therefore keyed on attribute names that mean the same thing everywhere, so a service exporting ``trace`` and ``audit`` where ``audit.actor`` is a plain string actor id needs a table that does not claim ``actor``.
+Widening a table until it collides is the failure mode to watch, and it surfaces on the consumer as a validation error rather than on the producer.
 
 An exception from your codec arrives as itself, since its own message says more about what failed than any wrapper could.
 A ``dump`` that returns something other than a mapping of names to values is the one thing the library says for itself.

@@ -60,6 +60,9 @@ isolate
    Registrations made outside stay visible inside, since they are configuration rather than state.
    Refs built with :func:`ref` inside the block are rolled back the same way, so a path one test made up on purpose is not a path the next test's :func:`resolve_refs` has to import.
 
+   Three process-wide switches are deliberately left alone, the codec :func:`set_codec` holds, the :func:`annotate_exceptions` switch and :func:`debug` recording.
+   Each of them is startup configuration rather than context state, so a test that turns one on clears it in its own fixture.
+
    Intended for test fixtures.
 
    .. code-block:: python

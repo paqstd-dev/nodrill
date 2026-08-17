@@ -14,6 +14,21 @@ def _describe_key(key: Any) -> str:
     return repr(key) if isinstance(key, str) else getattr(key, "__qualname__", repr(key))
 
 
+def _rebuilt(
+    cls: type[BaseException], args: tuple[Any, ...], state: dict[str, Any]
+) -> BaseException:
+    """Rebuild an exception from its parts, without the __init__ that built its message."""
+    error = cls.__new__(cls)
+    error.args = args
+    error.__dict__.update(state)
+    return error
+
+
+def _reduced(error: BaseException) -> tuple[Any, tuple[Any, ...]]:
+    """Return what pickle needs for an exception whose args hold a built message."""
+    return (_rebuilt, (error.__class__, error.args, error.__dict__))
+
+
 class NoProviderError(LookupError):
     """Raised by use() when no provider is active for the requested key.
 
@@ -29,9 +44,8 @@ class NoProviderError(LookupError):
         self.diagnosis = diagnosis
         super().__init__(self._build_message())
 
-    def __reduce__(self) -> tuple[Any, tuple[Any, ...], dict[str, Any]]:
-        # args holds the built message, so the fields are respecified and state carries the notes.
-        return (self.__class__, (self.key, self.active_keys, self.diagnosis), self.__dict__)
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        return _reduced(self)
 
     def _build_message(self) -> str:
         wanted = _describe_key(self.key)
@@ -68,12 +82,10 @@ class KeyResolutionError(LookupError):
 
     def __init__(self, path: str, problem: str) -> None:
         self.path = path
-        self._problem = problem
         super().__init__(f"ref({path!r}): {problem}")
 
-    def __reduce__(self) -> tuple[Any, tuple[Any, ...], dict[str, Any]]:
-        # Both arguments are required, and state carries the notes a block attached.
-        return (self.__class__, (self.path, self._problem), self.__dict__)
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        return _reduced(self)
 
 
 class EnvelopeVersionError(ValueError):
@@ -85,14 +97,16 @@ class EnvelopeVersionError(ValueError):
     def __init__(self, version: int, supported: int) -> None:
         self.version = version
         self.supported = supported
+        side = "ahead of" if version > supported else "behind"
+        where = "here" if version > supported else "there"
         super().__init__(
             f"this nodrill reads envelope version {supported}, and the payload "
-            f"carries version {version}"
+            f"carries version {version}. The producer is {side} this service, "
+            f"so upgrade nodrill {where}"
         )
 
-    def __reduce__(self) -> tuple[Any, tuple[Any, ...], dict[str, Any]]:
-        # It crosses a process boundary by construction, so the notes have to survive the trip.
-        return (self.__class__, (self.version, self.supported), self.__dict__)
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        return _reduced(self)
 
 
 class FrozenContextError(AttributeError):

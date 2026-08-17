@@ -30,7 +30,8 @@ An envelope from :func:`~nodrill.export` is a mapping of names to values, and a 
        for member in members:
            key, _, value = member.partition("=")
            values[key.strip()] = unquote(value.strip())
-       return {"v": 1, "ctx": {"trace": values}}
+       # No members means no namespace, since an empty one would shadow the outer trace.
+       return {"v": 1, "ctx": {"trace": values} if values else {}}
 
 
    def call_downstream() -> dict[str, str]:
@@ -71,6 +72,10 @@ An ``int`` sent over baggage arrives as a ``str``, which is the one place this f
 The specification caps a header at 8192 bytes and 64 members, and an intermediary is free to drop what exceeds that.
 A request id and a tenant fit with room to spare, and a namespace that does not fit is a namespace that should be a lookup key rather than a payload.
 
+A request without the header carries no context, and the envelope says so by carrying no namespace.
+An empty ``trace`` would open a provider holding nothing, which shadows the outer one, satisfies ``"trace" in active()``, defeats ``use("trace", default=...)`` and turns a missing header into an :exc:`AttributeError` four frames down instead of a :exc:`~nodrill.NoProviderError` at the read.
+A handler that has to run either way reaches for ``use("trace", default=...)``, the same as a worker reading a message an older producer enqueued.
+
 The version field does not survive.
 Baggage has no room for one, so the receiving side rebuilds the envelope at the version it understands, and the compatibility contract becomes the header's rather than the envelope's.
 
@@ -83,4 +88,5 @@ An adopted ``tenant`` decides nothing on its own, and it is authorised exactly t
 .. seealso::
 
    :doc:`/content/howto/carry-context-onto-a-queue` for a boundary where you own the format.
+   :doc:`/content/howto/carry-an-object-across-a-boundary` for the value ``export`` refuses.
    :doc:`/content/topics/concurrency` for what crosses which boundary.
