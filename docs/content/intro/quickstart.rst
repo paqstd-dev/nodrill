@@ -190,6 +190,26 @@ Two helpers cover it.
        with Executor(max_workers=4) as pool: # ThreadPoolExecutor subclass
            pool.submit(job)                  # sees the submit-time context
 
+Leaving the process
+-------------------
+
+A thread and a task share memory with you, so ``wrap`` and ``Executor`` hand the objects themselves over.
+A Celery worker, a process pool and an outbound HTTP call share nothing, so what crosses is a copy.
+
+.. code-block:: python
+
+   from nodrill import adopt, export, provider, use
+
+   with provider("trace", request_id="req-42"):
+       payload = export("trace")             # {'v': 1, 'ctx': {'trace': {...}}}
+
+   # in the worker, which shares nothing with the code above
+   with adopt(payload):
+       use("trace").request_id               # 'req-42'
+
+``export`` names what leaves, so nothing travels by accident, and every value has to be one :mod:`json` can hold as itself.
+``adopt`` opens the payload as ordinary providers for the length of the block.
+
 Isolating tests
 ---------------
 
@@ -210,6 +230,6 @@ Where to go from here
 ---------------------
 
 You have now seen the whole library.
-The :doc:`topic guides </content/topics/index>` go through each piece properly, what ``frozen=True`` does, how the ambient :data:`~nodrill.context` namespace differs from a provider, and what ``@inject`` will and will not accept.
+The :doc:`topic guides </content/topics/index>` go through each piece properly, what ``frozen=True`` does, how the ambient :data:`~nodrill.context` namespace differs from a provider, what ``@inject`` will and will not accept, and what :func:`~nodrill.set_codec` adds when a namespace holds something :mod:`json` has nowhere to put.
 
 If you would rather read a finished program, the :doc:`how-to guides </content/howto/index>` are complete, runnable files.

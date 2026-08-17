@@ -57,7 +57,7 @@ The factory runs on every miss rather than caching its first result, since a cac
 A registered factory wins over the call-site default, because registration declares the canonical fallback for the class, while the call-site default only says what this one caller can live with.
 
 The defaults table itself is a module-level dict of factories written at import time.
-That is configuration rather than flowing state, and state lives only in ContextVars, with the two further exceptions argued for below.
+That is configuration rather than flowing state, and state lives only in ContextVars, with the three further exceptions argued for below.
 
 The ambient context object
 --------------------------
@@ -285,6 +285,48 @@ The layer is refused rather than improvised where it has no meaning.
 On an instance target ``extend=True`` would be :func:`dataclasses.replace` with extra steps, and over a name holding a non-``Namespace`` value it would have to fall back to shadowing, which is precisely the bug the feature exists to prevent, so both raise and say what to write instead.
 Freezing is not inherited, since ``frozen=True`` describes what a provider hands to its consumers rather than a property the value carries.
 Extending a frozen layer reads the outer attributes through the proxy, which forwards ``__dict__`` like any other read.
+
+The boundary names what travels, not the provider
+--------------------------------------------------
+
+``export("trace")`` is a call at the boundary, and there is no ``portable=True`` on ``provider()``.
+
+The flag was the first design and it loses to the two tests above.
+A name on ``provider()`` has to be something nothing at the call site can say, and the call site says it exactly, on the line where the developer is already deciding what goes over the wire.
+Marking at the provider also spreads the answer to "what leaves this process" across every provider call in a codebase, where a boundary call keeps it on one reviewable line.
+
+The flag's defence was error attribution, the scalars-only check running at ``provider()`` time so a bad value is reported by the line that made it rather than by the line that found it.
+That defence does not survive the mutable case.
+A ``Namespace`` is writable for as long as its block is open, so ``ctx.tags.append(conn)`` after a validated entry is ordinary code, and a check at entry can only ever say the value was portable once.
+Validation belongs where the value is read, the value is read at export, and so the message names the boundary and pays for it by naming the provider, the path to the value and its type.
+
+Exact types, not :func:`isinstance`.
+A :class:`~enum.StrEnum` member encodes as a string and comes back a plain ``str``, so accepting it would mean the consumer reads a different type than the producer provided, and a boundary that quietly changes a type is worse than one that refuses.
+The same argument refuses a :class:`tuple`, which would come back a ``list``.
+Non-finite floats are refused because :func:`json.dumps` writes them and no other language's parser reads them.
+
+The walk rebuilds the containers it checks, so the envelope is a copy and a later write into a provided list cannot reach a payload already handed to a queue.
+The same walk runs on the way in, since a payload from a broker is input, which makes one rule with two call sites rather than two rules.
+
+The envelope carries its version beside the namespaces rather than among them, ``{"v": 1, "ctx": {...}}``, because a flat mapping would collide with a provider named ``v``.
+Those two keys are frozen for every future version, so any version can be read far enough to report its own number, and everything else is free to change under a new number.
+
+A codec widens what you may provide without widening what goes on the wire.
+``set_codec(dump=..., load=...)`` maps one namespace's values at each end, and the result of ``dump`` is checked exactly as an unencoded value is, so the envelope is JSON whatever the codec does inside and the queue and header recipes keep working.
+A codec that wants pickle therefore renders it as a string, which is the point rather than an obstacle, since it puts the decision to run arbitrary code from a payload where a reader can see it.
+
+The pair takes a whole namespace rather than one value at a time.
+A per-value hook, the shape :func:`json.dumps` uses for ``default``, is asymmetric, because the way back has to be a per-container hook that inspects everything, and both halves would then need the library to own a tagging convention.
+Tagging belongs to the codec, since a namespace on the wire has forgotten every type it held, and whether the payload carries the type or the consumer knows it from the namespace's shape is a question about a deployment rather than about a library.
+The name of the namespace is deliberately not passed either, since a codec dispatches on what a value is, and a codec that needs to know which namespace it is encoding is describing two formats rather than one.
+
+It is process-wide configuration, set at startup, which makes it the fourth thing living outside a ContextVar.
+The argument is the same one ``annotate_exceptions`` makes and a shorter one besides.
+Both ends of a boundary have to agree on the format, so the producer's scope has no business deciding what a consumer in another process will be able to read, and a scoped codec would be read in whichever scope the export happened to run in.
+``isolate()`` therefore leaves it alone, as it leaves the annotation switch and debug recording alone, and a test that sets one clears it the way it would clear those.
+
+``adopt()`` opens ordinary providers through an :class:`~contextlib.ExitStack` rather than writing the registry itself.
+It therefore shadows, unwinds and appears in ``debug()`` and in exception notes without a line of its own for any of that, and the namespaces are handed over by key so that a payload attribute named ``frozen`` or ``key`` stays data rather than becoming a parameter.
 
 Errors
 ------

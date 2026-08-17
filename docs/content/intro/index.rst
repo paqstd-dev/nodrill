@@ -15,5 +15,5 @@ Install it, then work through the tutorial, which starts from the problem the li
 .. rubric:: Where to go next
 
 The :doc:`topic guides </content/topics/index>` explain each feature in full, one page per concept.
-The :doc:`how-to guides </content/howto/index>` are task-shaped, a request scope, a thread pool, a test suite.
+The :doc:`how-to guides </content/howto/index>` are task-shaped, a request scope, a thread pool, a Celery task, a test suite.
 The :doc:`API reference </content/ref/index>` is the exhaustive description of every name nodrill exports.

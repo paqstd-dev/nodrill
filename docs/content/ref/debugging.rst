@@ -88,6 +88,15 @@ explain
         Session opened at web.py:42, on thread 'worker-3', task 'request-18'
 
    Blocks opened on other threads and in other tasks are listed too, which is the reason to read this rather than :func:`active`.
+
+   A process with a codec registered says so on a line of its own, above the blocks and whether or not recording is on.
+
+   .. code-block:: text
+
+      nodrill codec: dump and load registered.
+
+   That line is the only way to ask which halves :func:`set_codec` holds, which is the first thing to check when a value arrived in its encoded form.
+   A process with no codec prints nothing extra.
    The reader's own thread comes first, and a thread's blocks stay together, since a global ordering by age would interleave them and leave no stack readable anywhere.
    Outside debug mode nothing is recorded, and the returned string says so.
 
@@ -136,6 +145,7 @@ annotate_exceptions
 
    A block is named only when the exception actually leaves it, so a block that catches and swallows says nothing, and a retry that lets one exception object out twice leaves two notes.
    ``provider(..., annotate=True)`` and ``annotate=False`` override the switch for one block, in either direction, and are covered under :ref:`ref-provider`.
+   :func:`~nodrill.adopt` takes the same flag, which is where a service reaches for it when a block provides values somebody else wrote.
 
    The lookup path is untouched, and a block that exits without an exception costs one pointer comparison more than it did.
 

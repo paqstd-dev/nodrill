@@ -13,6 +13,10 @@ Each one is a complete program you can paste into a file and run, with the reaso
    accumulate-an-audit-trail
    fan-out-with-asyncio
    run-work-in-threads
+   carry-context-into-a-process-pool
+   carry-context-onto-a-queue
+   carry-context-over-http
+   carry-an-object-across-a-boundary
    test-injected-code
    refer-to-a-key-you-cannot-import
    find-out-why-the-context-is-missing

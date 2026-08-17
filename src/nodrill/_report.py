@@ -27,6 +27,9 @@ from ._errors import _describe_key, _Key
 # The string a log aggregator greps for, so it is a contract rather than a wording.
 _PREFIX = "nodrill scope: "
 
+# Its own word after the shared one, since a boundary call is not a scope.
+_CODEC_PREFIX = "nodrill codec: "
+
 # Wide enough for an ordinary dataclass, narrow enough to keep a traceback readable.
 _WIDTH = 200
 
@@ -84,6 +87,14 @@ def _annotate(exc: BaseException, key: _Key, value: Any, *, annotate: bool | Non
         # An exception that refuses the note keeps its own failure, which is the one that matters.
         with suppress(Exception):
             _add_note(exc, _scope_note(key, value))
+
+
+def _boundary_note(exc: BaseException, where: str) -> None:
+    """Attach a note naming the boundary call a codec raised inside."""
+    # The same switch as a scope note, though this one names a call rather than a value.
+    if _state.enabled and isinstance(exc, Exception):
+        with suppress(Exception):
+            _add_note(exc, f"{_CODEC_PREFIX}raised during {where}")
 
 
 def annotate_exceptions(*, enabled: bool = True) -> None:

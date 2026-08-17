@@ -92,6 +92,49 @@ FrozenContextError
 
    It subclasses :exc:`AttributeError` so that ``getattr``-style guards and duck-typing checks behave as they would on any other object.
 
+EnvelopeVersionError
+--------------------
+
+.. exception:: EnvelopeVersionError
+
+   Bases: :exc:`ValueError`
+
+   Raised by :func:`adopt` when a payload carries an envelope version this release cannot read.
+
+   .. attribute:: version
+
+      The version the payload carries, as an integer.
+
+   .. attribute:: supported
+
+      The version this release reads.
+
+   .. code-block:: text
+
+      EnvelopeVersionError: this nodrill reads envelope version 1, and the payload
+      carries version 2. The producer is ahead of this service, so upgrade nodrill
+      here
+
+   The message names the side to move, since the two numbers alone leave a reader working out which end is stale.
+   A payload older than this service names the producer instead, since then it is the producer that has to move.
+
+   A producer running a release ahead of its consumer is what this exists for, so it is a class of its own rather than a bare :exc:`ValueError`.
+   Catching it around a ``with adopt(...)`` block catches the version mismatch and nothing the block itself raises.
+
+   .. code-block:: python
+
+      try:
+          with adopt(payload):
+              handle()
+      except EnvelopeVersionError as mismatch:
+          log.warning("dropping context from a newer producer: %s", mismatch)
+          handle()
+
+   Log the catch rather than passing it.
+   Running on is a deliberate loss of context, not a graceful degradation, and a service that swallows it silently has no way to notice a version skew that never resolves.
+
+   A payload that is not an envelope at all raises :exc:`TypeError` instead, since that is a caller error rather than a version skew.
+
 UnusedProviderWarning
 ---------------------
 

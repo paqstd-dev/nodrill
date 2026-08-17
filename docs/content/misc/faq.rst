@@ -20,6 +20,9 @@ Yes, and none of them need an integration.
 Open a provider wherever that framework gives you a boundary, middleware, a dependency, a signal, or a task's entry point.
 Everything below it, including third-party code, can read from the scope.
 
+A Celery task runs in another process, so it has nothing to open a provider from until something carries the values there.
+:func:`~nodrill.export` puts them in the message and :func:`~nodrill.adopt` opens them in the worker, which :doc:`/content/howto/carry-context-onto-a-queue` shows in full.
+
 There are no framework integrations in the package, deliberately.
 :doc:`scope` says what else is out of scope.
 

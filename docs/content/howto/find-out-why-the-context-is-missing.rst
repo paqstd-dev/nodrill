@@ -120,6 +120,16 @@ Reads are counted per block, so a shadowed provider is reported even when someth
 It is off by default even inside debug mode, since a warning changes what a program prints and a counting read costs roughly three times a plain one, and a block whose body raised is never blamed.
 The warning is an :exc:`~nodrill.UnusedProviderWarning`, so `warnings.filterwarnings` can silence it by category.
 
+A miss inside an adopt block
+----------------------------
+
+The hint on that miss asks whether you forgot ``with provider("trace")``, which is the right question everywhere except here.
+Inside a consumer the name was supposed to arrive in the payload, so nothing in this service was ever going to open it, and ``debug()`` has nothing to say because no block was recorded for that key.
+
+Read the payload instead.
+``payload["ctx"]`` lists exactly what the producer sent, ``only`` on the ``adopt`` call lists what this consumer agreed to open, and the name is missing from one of the two.
+:func:`~nodrill.explain` still helps with the other half of the question, since it names which codec halves this process holds, and a namespace that arrived as encoded data usually means the ``load`` was never registered.
+
 .. rubric:: See also
 
 :doc:`/content/ref/debugging` for both functions, and :doc:`/content/topics/concurrency` for what carries context in the first place.
