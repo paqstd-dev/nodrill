@@ -104,6 +104,8 @@ export
    An attribute name the namespace itself owns, such as ``_Namespace__label``, is refused too, since a slot beats an instance ``__dict__`` and the value would never be readable.
 
    The returned lists and dicts are rebuilt rather than referenced, so a write to a provider never reaches an envelope already handed on.
+   The walk reads the containers the block still holds, so a namespace written from another thread while ``export()`` runs is an unsynchronised read like any other.
+   An :class:`int` arrives as itself wherever Python reads it, and a consumer that reads JSON numbers as doubles loses precision above ``2 ** 53``, which is a property of that reader rather than of the envelope.
    The registry holds one value per key, so a name resolves to the nearest enclosing provider, which is what :func:`use` would return on the same line.
 
    A name nobody opened raises rather than exporting an empty namespace.
@@ -119,7 +121,7 @@ export
 adopt
 -----
 
-.. function:: adopt(payload, *, only=None)
+.. function:: adopt(payload, *, only=None, annotate=None)
 
    Open the providers an envelope carries, for the length of the block.
    Returns a context manager.
@@ -143,11 +145,18 @@ adopt
 
       try:
           scope = adopt(message["nodrill_ctx"])
+      except EnvelopeVersionError:
+          log.error("dropping context from an envelope version this service does not read")
+          scope = contextlib.nullcontext()
       except (TypeError, ValueError):
           log.warning("dropping unreadable context")
           scope = contextlib.nullcontext()
       with scope:
           handle(job)                  # a TypeError from here is not caught above
+
+   :exc:`EnvelopeVersionError` subclasses :exc:`ValueError`, so it is caught first or not at all.
+   The wide clause on its own would read a rolling deploy as a malformed payload.
+   That is the one failure here that resolves itself once the older side is upgraded, which is what makes it worth a louder line in the log.
 
    The payload decides which namespaces open unless ``only`` names the ones this consumer expects.
    That asymmetry matters, since :func:`export` lists what leaves while a payload arriving from somewhere else lists what enters, and each name it carries shadows a provider of that name for the length of the block.
@@ -167,6 +176,17 @@ adopt
 
    An adopted value is input.
    Nothing here says the payload came from a producer you trust, and a ``tenant`` that arrived this way is authorised the way any other request field is authorised.
+
+   ``annotate`` decides for these blocks what it decides for a :func:`provider` block, in the same three states.
+
+   .. code-block:: python
+
+      with adopt(payload, only=("trace",), annotate=False):
+          handle()                     # the payload is in no note this block leaves
+
+   A note renders what a block provides, and what these blocks provide is what somebody else wrote.
+   A service that turns :func:`annotate_exceptions` on and adopts a payload from another deployment puts that payload in every traceback leaving the block.
+   ``annotate=False`` is the answer where the producer is not yours, and it leaves the switch on for the providers this service opens itself.
 
 set_codec
 ---------

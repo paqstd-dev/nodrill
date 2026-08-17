@@ -57,7 +57,7 @@ The factory runs on every miss rather than caching its first result, since a cac
 A registered factory wins over the call-site default, because registration declares the canonical fallback for the class, while the call-site default only says what this one caller can live with.
 
 The defaults table itself is a module-level dict of factories written at import time.
-That is configuration rather than flowing state, and state lives only in ContextVars, with the two further exceptions argued for below.
+That is configuration rather than flowing state, and state lives only in ContextVars, with the three further exceptions argued for below.
 
 The ambient context object
 --------------------------

@@ -145,6 +145,7 @@ annotate_exceptions
 
    A block is named only when the exception actually leaves it, so a block that catches and swallows says nothing, and a retry that lets one exception object out twice leaves two notes.
    ``provider(..., annotate=True)`` and ``annotate=False`` override the switch for one block, in either direction, and are covered under :ref:`ref-provider`.
+   :func:`~nodrill.adopt` takes the same flag, which is where a service reaches for it when a block provides values somebody else wrote.
 
    The lookup path is untouched, and a block that exits without an exception costs one pointer comparison more than it did.
 

@@ -63,11 +63,16 @@ def export(*names: str) -> dict[str, Any]:
     an envelope already handed on.  The result carries a version that
     adopt() checks.
     """
-    return {_VERSION_KEY: _VERSION, _CTX_KEY: {name: _exported(name) for name in names}}
+    # Read once, so a set_codec() part way through cannot build one envelope out of two codecs.
+    dump = _codec.dump
+    return {_VERSION_KEY: _VERSION, _CTX_KEY: {name: _exported(name, dump) for name in names}}
 
 
 def adopt(
-    payload: Mapping[str, Any], *, only: Iterable[str] | None = None
+    payload: Mapping[str, Any],
+    *,
+    only: Iterable[str] | None = None,
+    annotate: bool | None = None,
 ) -> AbstractContextManager[None]:
     """Open the providers an export() envelope carries, for the length of the block.
 
@@ -77,19 +82,24 @@ def adopt(
     malformed envelope from a failure in its own work.  Which namespaces
     open is the payload's choice unless only= names the ones this consumer
     expects, which is what to reach for when the producer is not yours.
-    What no check can say is whether the values are true, and an adopted
-    value is input with the same trust as any other request field.
+    annotate decides for these blocks what it decides for a provider() block,
+    and annotate=False keeps a payload somebody else wrote out of a traceback
+    this process renders.  What no check can say is
+    whether the values are true, and an adopted value is input with the same
+    trust as any other request field.
     """
-    return _adopting(_adopted(payload, only))
+    return _adopting(_adopted(payload, only), annotate=annotate)
 
 
 @contextmanager
-def _adopting(namespaces: dict[str, dict[str, Any]]) -> Iterator[None]:
+def _adopting(namespaces: dict[str, dict[str, Any]], *, annotate: bool | None) -> Iterator[None]:
     """Open one provider per checked namespace, unwinding them on the way out."""
     with ExitStack() as scopes:
         for name, values in namespaces.items():
             # By key rather than as keywords, so an attribute named `frozen` stays data.
-            scopes.enter_context(provider(Namespace._named(name, values), key=name))  # noqa: SLF001
+            scopes.enter_context(
+                provider(Namespace._named(name, values), key=name, annotate=annotate)  # noqa: SLF001
+            )
         yield
 
 
@@ -118,7 +128,7 @@ def set_codec(*, dump: _Hook | None = None, load: _Hook | None = None) -> None:
     _codec.load = load
 
 
-def _exported(name: Any) -> dict[str, Any]:
+def _exported(name: Any, dump: _Hook | None) -> dict[str, Any]:
     """Return one provider's values, checked, having checked the name first.
 
     Typed loosely, since this is where a name of the wrong kind is caught
@@ -152,18 +162,25 @@ def _exported(name: Any) -> dict[str, Any]:
     where = f"export({name!r})"
     # A copy, so a codec cannot add or drop attributes on the namespace the block still holds.
     values = dict(vars(namespace))
-    dump = _codec.dump
     return _values(values if dump is None else _hooked(dump, values, where), where)
 
 
 def _wanted(only: Iterable[str]) -> frozenset[str]:
-    """Return the names to open, having refused the bare string that reads as one."""
+    """Return the names to open, having refused what is not a collection of names."""
     if isinstance(only, str):
         raise TypeError(
             f"adopt(only={only!r}) takes a collection of names, and a bare string reads as "
             f"one name per character. Pass ({only!r},) for the one name"
         )
-    return frozenset(only)
+    if not isinstance(only, Iterable):
+        raise TypeError(f"adopt(only=...) takes a collection of names, got {type(only).__name__}")
+    names = []
+    # Checked before the set is built, so an unhashable name is refused here rather than by it.
+    for name in only:
+        if type(name) is not str:
+            raise TypeError(f"adopt(only=...) takes provider names, and {name!r} is not a string")
+        names.append(name)
+    return frozenset(names)
 
 
 def _adopted(payload: Any, only: Iterable[str] | None) -> dict[str, dict[str, Any]]:
@@ -188,14 +205,16 @@ def _adopted(payload: Any, only: Iterable[str] | None) -> dict[str, dict[str, An
             "namespaces under 'ctx'"
         )
     adopted = {}
+    # Read once, so a codec swapped part way through cannot open one payload through two.
+    load = _codec.load
     for name, values in namespaces.items():
+        # Skipped before any check, since a name this consumer did not ask for is not its business.
+        if wanted is not None and name not in wanted:
+            continue
         if type(name) is not str:
             raise TypeError(
                 f"adopt(): 'ctx' is keyed by {type(name).__name__}, and a provider name is a string"
             )
-        # Skipped before the walk, since a name this consumer did not ask for is not its business.
-        if wanted is not None and name not in wanted:
-            continue
         if not isinstance(values, Mapping):
             raise TypeError(
                 f"adopt(): 'ctx' holds {type(values).__name__} under {name!r}, and a "
@@ -204,7 +223,6 @@ def _adopted(payload: Any, only: Iterable[str] | None) -> dict[str, dict[str, An
         where = f"adopt({name!r})"
         # Checked before the codec sees it, so a malformed payload never reaches user code.
         checked = _values(values, where)
-        load = _codec.load
         adopted[name] = checked if load is None else _hooked(load, checked, where)
     return adopted
 
@@ -228,6 +246,12 @@ def _hooked(hook: _Hook, values: dict[str, Any], where: str) -> dict[str, Any]:
                 f"{where}: the codec returned {attribute!r} as a name, and a namespace "
                 f"is keyed by strings"
             )
+        # Checked here as well as in the walk, since a load result never reaches the walk.
+        if attribute in _RESERVED:
+            raise TypeError(
+                f"{where}: the codec returned {attribute!r}, which is a name the namespace "
+                f"itself owns, so a value under it would never be readable"
+            )
     return dict(result)
 
 
@@ -242,6 +266,11 @@ def _values(values: Mapping[Any, Any], where: str) -> dict[str, Any]:
                 f"{where}: {name!r} is a name the namespace itself owns, so a value under "
                 f"it would never be readable"
             )
+        # A scalar attribute skips the walk, which for one value is a call and two allocations.
+        kind = type(value)
+        if kind in _SCALARS and (kind is not float or isfinite(value)):
+            built[name] = value
+            continue
         built[name] = _checked(value, where, [name], set())
     return built
 
@@ -252,13 +281,19 @@ def _at(path: list[Any]) -> str:
 
 
 def _checked(value: Any, where: str, path: list[Any], seen: set[int]) -> Any:
-    """Return value rebuilt as far as it is portable, or raise naming the path to it."""
+    """Return value rebuilt as far as it is portable, or raise naming the path to it.
+
+    Reached only for what a caller's own scalar test refused, which is a
+    container, a float that is not finite, or a value that does not travel at
+    all.  A portable scalar is finished where it was found instead.
+    """
     kind = type(value)
     if kind is dict or kind is list:
         if id(value) in seen:
             raise ValueError(f"{where}: {_at(path)} contains itself")
         # Dropped again below, so the set is the path back rather than every container seen.
         seen.add(id(value))
+        # Each loop finishes a scalar itself, since the call is most of what a scalar element costs.
         if kind is dict:
             built: Any = {}
             for key, item in value.items():
@@ -267,21 +302,28 @@ def _checked(value: Any, where: str, path: list[Any], seen: set[int]) -> Any:
                         f"{where}: {_at(path)} is keyed by {key.__class__.__name__}, and a "
                         f"JSON object is keyed by strings"
                     )
+                item_kind = type(item)
+                if item_kind in _SCALARS and (item_kind is not float or isfinite(item)):
+                    built[key] = item
+                    continue
                 path.append(key)
                 built[key] = _checked(item, where, path, seen)
                 path.pop()
         else:
             built = []
+            append = built.append
             for index, item in enumerate(value):
+                item_kind = type(item)
+                if item_kind in _SCALARS and (item_kind is not float or isfinite(item)):
+                    append(item)
+                    continue
                 path.append(index)
-                built.append(_checked(item, where, path, seen))
+                append(_checked(item, where, path, seen))
                 path.pop()
         seen.discard(id(value))
         return built
     if kind is float and not isfinite(value):
         raise ValueError(f"{where}: {_at(path)} is {value!r}, which JSON cannot represent")
-    if kind in _SCALARS:
-        return value
     raise _refused(where, _at(path), value)
 
 

@@ -20,9 +20,11 @@ from nodrill import (
     EnvelopeVersionError,
     NoProviderError,
     UnusedProviderWarning,
+    _report,
     active,
     adopt,
     debug,
+    explain,
     export,
     provider,
     ref,
@@ -128,12 +130,15 @@ class TestRoundTrip:
             assert (carried.live, carried.parent) == (True, None)
 
     def test_nested_containers_survive(self) -> None:
-        """Lists and dicts of scalars travel, to any depth."""
-        with provider("trace", tags=["a", 1], meta={"region": {"eu": [True, None]}}):
+        """Lists and dicts of scalars travel to any depth, with either one nested in the other."""
+        with provider(
+            "trace", tags=["a", 1], meta={"region": {"eu": [True, None]}}, rows=[{"id": 1}]
+        ):
             payload = json.loads(json.dumps(export("trace")))
         with adopt(payload):
             assert use("trace").tags == ["a", 1]
             assert use("trace").meta == {"region": {"eu": [True, None]}}
+            assert use("trace").rows == [{"id": 1}]
 
     def test_several_namespaces_travel_together(self) -> None:
         """One envelope, one adopt, every namespace it was given."""
@@ -315,6 +320,12 @@ class TestRefusedValues:
             with pytest.raises(TypeError, match="meta is keyed by int"):
                 export("trace")
 
+    def test_a_float_inside_a_container_is_refused_with_its_path(self) -> None:
+        """A float JSON cannot represent is refused with its path from inside a container too."""
+        with provider("trace", points=[1.0, float("nan")]):
+            with pytest.raises(ValueError, match=r"points\[1\] is nan"):
+                export("trace")
+
     def test_a_container_holding_itself_is_refused(self) -> None:
         """A cycle raises where it is found rather than recursing to the interpreter limit."""
         tags: list[Any] = ["a"]
@@ -418,10 +429,46 @@ class TestAdoptedPayloads:
         with adopt(payload, only=("trace",)):
             assert use("trace").request_id == "r-3"
 
+    def test_a_skipped_namespace_is_not_even_named(self) -> None:
+        """A key this consumer did not ask for is skipped before anything checks it."""
+        payload = {"v": 1, "ctx": {"trace": {"request_id": "r-3"}, 7: {"x": 1}}}
+        with adopt(payload, only=("trace",)):
+            assert use("trace").request_id == "r-3"
+
     def test_a_bare_string_is_not_a_collection_of_names(self) -> None:
         """only='trace' reads as one name per character, which would silently open nothing."""
         with pytest.raises(TypeError, match=r"a bare string reads as one name per character"):
             adopt(envelope(request_id="r-4"), only="trace")
+
+    def test_only_takes_names_rather_than_anything_iterable(self) -> None:
+        """A name of another type matches nothing, which would read as a payload arriving empty."""
+        with pytest.raises(TypeError, match="takes provider names, and 7 is not a string"):
+            adopt(envelope(request_id="r-5"), only=(7,))  # type: ignore[arg-type]
+
+    def test_only_has_to_be_a_collection_at_all(self) -> None:
+        """Something that is not a collection at all is refused in the library's own words."""
+        with pytest.raises(TypeError, match=r"takes a collection of names, got int"):
+            adopt(envelope(request_id="r-6"), only=7)  # type: ignore[arg-type]
+
+    def test_annotate_decides_whether_a_payload_reaches_a_traceback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A payload somebody else wrote is the one a process may not want to render."""
+        recorded: list[str] = []
+        # The handover is recorded rather than read back, since __notes__ is 3.11 and up.
+        monkeypatch.setattr(_report, "_add_note", lambda _exc, note: recorded.append(note))
+        nodrill.annotate_exceptions()
+        try:
+            with pytest.raises(ValueError, match="boom"):
+                with adopt(envelope(body="hunter2"), annotate=False):
+                    raise ValueError("boom")
+        finally:
+            nodrill.annotate_exceptions(enabled=False)
+        assert recorded == []
+        with pytest.raises(ValueError, match="boom"):
+            with adopt(envelope(request_id="r-9"), annotate=True):
+                raise ValueError("boom")
+        assert recorded == ["nodrill scope: Namespace('trace', request_id='r-9')"]
 
     def test_a_payload_cannot_name_an_attribute_the_namespace_owns(self) -> None:
         """A slot beats __dict__, so getattr and a re-export would disagree about the value."""
@@ -528,18 +575,25 @@ class TestCodec:
             with pytest.raises(ZeroDivisionError):
                 export("trace")
 
-    @pytest.mark.skipif(sys.version_info < (3, 11), reason="notes are 3.11 and up")
-    def test_a_codec_failure_is_noted_with_the_call_it_ran_under(self) -> None:
+    def test_a_codec_failure_is_noted_with_the_call_it_ran_under(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """The traceback lands in a comprehension, so which namespace it was is worth saying."""
+        recorded: list[str] = []
+
+        def record(_exc: BaseException, note: str) -> None:
+            recorded.append(note)
+
+        # The handover is recorded rather than read back, since __notes__ is 3.11 and up.
+        monkeypatch.setattr(_report, "_add_note", record)
         set_codec(dump=boom)
         nodrill.annotate_exceptions()
         try:
-            with provider("trace", request_id="r-4"), pytest.raises(ZeroDivisionError) as raised:
+            with provider("trace", request_id="r-4"), pytest.raises(ZeroDivisionError):
                 export("trace")
         finally:
             nodrill.annotate_exceptions(enabled=False)
-        attached = getattr(raised.value, "__notes__", ())
-        assert "nodrill codec: raised during export('trace')" in attached
+        assert recorded == ["nodrill codec: raised during export('trace')"]
 
     def test_a_dump_returning_something_else_is_refused(self) -> None:
         """A namespace is a mapping of names to values, and the way out is checked for it."""
@@ -572,6 +626,54 @@ class TestCodec:
         with provider("trace", request_id="r-6"):
             with pytest.raises(TypeError, match=r"the codec returned .+Tenant\.ACME.+ as a name"):
                 export("trace")
+
+    def test_a_loaded_name_the_namespace_owns_is_refused(self) -> None:
+        """A load result never reaches the walk, so the name rule is checked where it lands."""
+        set_codec(load=lambda values: {**values, "_Namespace__label": "evil"})
+        with pytest.raises(TypeError, match="'_Namespace__label', which is a name the namespace"):
+            with adopt(envelope(request_id="r-7")):
+                pass
+
+    def test_a_dumped_name_the_namespace_owns_is_refused_too(self) -> None:
+        """The same rule on the way out, where the walk would otherwise be the one to say it."""
+        set_codec(dump=lambda values: {**values, "_Namespace__label": "evil"})
+        with provider("trace", request_id="r-8"):
+            with pytest.raises(TypeError, match="'_Namespace__label', which is a name"):
+                export("trace")
+
+    def test_a_swap_part_way_through_does_not_split_an_envelope(self) -> None:
+        """One call reads the codec once, so an envelope is never built out of two of them."""
+
+        def swap(values: dict[str, Any]) -> dict[str, Any]:
+            set_codec(dump=lambda later: {**later, "via": "second"})
+            return {**values, "via": "first"}
+
+        set_codec(dump=swap)
+        with provider("a", x=1), provider("b", y=2):
+            carried = export("a", "b")["ctx"]
+        assert [carried["a"]["via"], carried["b"]["via"]] == ["first", "first"]
+
+    def test_a_dump_is_handed_the_containers_the_block_still_holds(self) -> None:
+        """The copy is one level deep, so a codec that writes reaches the live namespace."""
+
+        def append(values: dict[str, Any]) -> dict[str, Any]:
+            values["tags"].append("added")
+            return values
+
+        set_codec(dump=append)
+        with provider("trace", tags=["a"]) as carried:
+            export("trace")
+            assert carried.tags == ["a", "added"]
+
+    def test_explain_names_the_halves_registered(self) -> None:
+        """A codec changes what a boundary takes, so a report omitting it would mislead."""
+        assert "codec" not in explain()
+        set_codec(dump=tag_actors)
+        assert explain().startswith("nodrill codec: dump registered.")
+        set_codec(load=untag_actors)
+        assert explain().startswith("nodrill codec: load registered.")
+        set_codec(dump=tag_actors, load=untag_actors)
+        assert explain().startswith("nodrill codec: dump and load registered.")
 
     def test_a_codec_half_has_to_be_callable(self) -> None:
         """Registering something uncallable fails at startup rather than at the first boundary."""
