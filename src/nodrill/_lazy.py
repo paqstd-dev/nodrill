@@ -19,7 +19,6 @@ added to every operation on both proxies.
 
 from __future__ import annotations
 
-import operator
 import threading
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -27,32 +26,14 @@ from contextvars import Context, copy_context
 from typing import Any, SupportsIndex, TypeVar, cast
 
 from ._errors import _describe_key
-from ._frozen import _FORWARDED, _INVOKED, _REFLECTED, _FrozenProxy
+from ._frozen import _FrozenProxy
 from ._refs import _key_target
+from ._views import _FORWARDED, _INPLACE, _INVOKED, _ITEM_WRITES, _REFLECTED, _unwrapped
 
 T = TypeVar("T")
 
 # Distinct from None, which a factory may legitimately return.
 _PENDING = object()
-
-# An unfrozen lazy value behaves as the value would, so these pass where frozen blocks them.
-_MUTATING: dict[str, Callable[..., Any]] = {
-    "__setitem__": operator.setitem,
-    "__delitem__": operator.delitem,
-    "__iadd__": operator.iadd,
-    "__isub__": operator.isub,
-    "__imul__": operator.imul,
-    "__imatmul__": operator.imatmul,
-    "__itruediv__": operator.itruediv,
-    "__ifloordiv__": operator.ifloordiv,
-    "__imod__": operator.imod,
-    "__ipow__": operator.ipow,
-    "__ilshift__": operator.ilshift,
-    "__irshift__": operator.irshift,
-    "__iand__": operator.iand,
-    "__ior__": operator.ior,
-    "__ixor__": operator.ixor,
-}
 
 
 class _Lazy:
@@ -241,7 +222,12 @@ class _LazyCell:
 
 
 def _own_view(built: Any, state: _Resolution) -> bool:
-    """Report whether the factory handed back the very value it is building."""
+    """Report whether the factory handed back the very value it is building.
+
+    Through any view as well, since a sealed provider publishes one over the
+    cell and the identity test would otherwise miss it and recurse.
+    """
+    built = _unwrapped(built)
     return type(built) is _LazyCell and built._nodrill_state is state  # noqa: SLF001
 
 
@@ -266,7 +252,7 @@ def _make_invoked(name: str) -> Callable[..., Any]:
     return method
 
 
-for _name, _op in {**_FORWARDED, **_MUTATING}.items():
+for _name, _op in {**_FORWARDED, **_ITEM_WRITES, **_INPLACE}.items():
     setattr(_LazyCell, _name, _make_forward(_op))
 for _name, _op in _REFLECTED.items():
     setattr(_LazyCell, _name, _make_reflected(_op))

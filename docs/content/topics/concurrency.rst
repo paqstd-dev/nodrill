@@ -43,6 +43,11 @@ A task keeps what it had at creation.
 
 There is nothing to configure and no nodrill-specific helper for asyncio.
 
+The third property is the one ``sealed=True`` changes, and deliberately.
+A sealed value travels into the task or the thread like any other, and it stops working when the block exits in the parent, wherever the work has got to.
+That is the point for a value the parent is about to return to a pool, and it is a report that can land on work that was still legitimately running, so seal a scope whose lifetime the background work is meant to respect and leave it unsealed where the work is meant to outlive it.
+:ref:`topics-providers-sealed` covers the rest of what it does and does not catch.
+
 Plain threads
 -------------
 

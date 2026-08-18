@@ -92,6 +92,63 @@ FrozenContextError
 
    It subclasses :exc:`AttributeError` so that ``getattr``-style guards and duck-typing checks behave as they would on any other object.
 
+ExpiredScopeError
+-----------------
+
+.. exception:: ExpiredScopeError
+
+   Bases: :exc:`RuntimeError`
+
+   Raised when a value provided with ``sealed=True`` is used after its provider block exited.
+
+   .. attribute:: key
+
+      The key the block provided, the string or the class.
+
+   .. attribute:: operation
+
+      What was touched, as a string.
+      An attribute name for an attribute read, write or delete, and the dunder for anything else, so ``__len__`` for ``len(value)``.
+
+   .. attribute:: opened
+
+      Where the block was entered, as a ``(file, line)`` tuple.
+
+   .. attribute:: exited
+
+      Where it exited, as a ``(file, line)`` tuple.
+
+   .. attribute:: used
+
+      Where the expired value was touched, as a ``(file, line)`` tuple.
+
+   .. code-block:: text
+
+      ExpiredScopeError: Session.query was used after its provider block exited.
+        opened at web.py:42
+        used here at worker.py:88
+      Fix: do the work inside the block, or hand the later work a value of its own,
+      since a sealed value stops working the moment its block exits.
+
+   The sites are the whole point of the message, because the frame that raises is never the frame that made the mistake.
+   ``exited`` is always recorded and is printed only when it differs from ``opened``, since a ``with`` statement exits on its own line and repeating it would be a site the reader already has.
+   A block closed by something else, an :class:`~contextlib.ExitStack` or an explicit call, prints both.
+
+   .. code-block:: text
+
+        opened at web.py:42 and exited at web.py:47
+
+   The fix line does not offer :func:`wrap`, which the other diagnostics here do, since carrying the scope into a thread does not carry a lifetime with it and a wrapped call that runs after the block still meets an expired value.
+
+   :exc:`RuntimeError` rather than :exc:`LookupError`, since nothing was looked up.
+   The lookup succeeded and handed back a value whose scope is gone.
+
+   It is deliberately not an :exc:`AttributeError`, which is the one place it parts company with :exc:`FrozenContextError`.
+   ``getattr(value, name, default)`` would then answer with the default, and a caller reading an escaped value through a guard would get the silent wrong value this exists to report.
+   ``hasattr`` raises for the same reason.
+
+   Sealing is covered under :ref:`sealed-scopes`.
+
 EnvelopeVersionError
 --------------------
 

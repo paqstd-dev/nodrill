@@ -109,6 +109,57 @@ class EnvelopeVersionError(ValueError):
         return _reduced(self)
 
 
+def _at_site(site: tuple[str, int]) -> str:
+    return f"{site[0]}:{site[1]}"
+
+
+class ExpiredScopeError(RuntimeError):
+    """Raised when a value provided with sealed=True is used after its block exited.
+
+    Carries the key, the operation that was attempted and the three sites,
+    the one the block opened at, the one it exited at and the one the use
+    ran at, as attributes.
+
+    Deliberately not an AttributeError, unlike FrozenContextError, since a
+    three-argument getattr would then swallow the expiry and hand back the
+    default, which is the silent wrong value sealing exists to report.
+    """
+
+    def __init__(
+        self,
+        key: Any,
+        operation: str,
+        *,
+        opened: tuple[str, int],
+        exited: tuple[str, int],
+        used: tuple[str, int],
+    ) -> None:
+        self.key = key
+        self.operation = operation
+        # Plain tuples, since the sites are documented as such and travel through a pickle.
+        self.opened: tuple[str, int] = (opened[0], opened[1])
+        self.exited: tuple[str, int] = (exited[0], exited[1])
+        self.used: tuple[str, int] = (used[0], used[1])
+        super().__init__(self._build_message())
+
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        return _reduced(self)
+
+    def _build_message(self) -> str:
+        where = f"opened at {_at_site(self.opened)}"
+        # A with exits on its own line, so name the exit site only when something else closed it.
+        if self.exited != self.opened:
+            where += f" and exited at {_at_site(self.exited)}"
+        return (
+            f"{_describe_key(self.key)}.{self.operation} was used after its provider "
+            f"block exited.\n"
+            f"  {where}\n"
+            f"  used here at {_at_site(self.used)}\n"
+            f"Fix: do the work inside the block, or hand the later work a value of its "
+            f"own, since a sealed value stops working the moment its block exits."
+        )
+
+
 class FrozenContextError(AttributeError):
     """Raised when writing to a context object provided with frozen=True."""
 

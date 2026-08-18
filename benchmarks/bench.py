@@ -77,12 +77,14 @@ PASSED = "one read in a function, value passed in as a parameter"
 USED = "the same read through `use()`"
 INJECTED = "the same read through `@inject`"
 FROZEN = "the same read through a `frozen=True` provider"
+SEALED = "the same read through a `sealed=True` provider"
 LAZY = "the same read through a resolved `lazy` provider"
 ALONE = "`use(Config)` on its own, without the call frame"
 REF = "the same lookup through a `ref()` key"
 REFERENCE = "bare `ContextVar.get()`, for reference"
 ENTER = "`with provider(...)`, enter and exit"
 STACKED = f"the same with {STACK_DEPTH} providers already open"
+SEALED_ENTER = "`with provider(..., sealed=True)`, entered and exited"
 LAZY_ENTER = "`with provider(lazy(...))`, entered and exited unread"
 EXTEND = f"`with provider(..., extend=True)`, over an {NAMESPACE_WIDTH}-attribute namespace"
 THREAD = "`wrap(fn)()`, per call into a thread"
@@ -96,18 +98,21 @@ ORDER = (
     USED,
     INJECTED,
     FROZEN,
+    SEALED,
     LAZY,
     ALONE,
     REF,
     REFERENCE,
     ENTER,
     STACKED,
+    SEALED_ENTER,
     LAZY_ENTER,
     EXTEND,
     THREAD,
 )
 
 ENTER_STATEMENT = "\nwith provider(config):\n    pass\n"
+SEALED_ENTER_STATEMENT = "\nwith provider(config, sealed=True):\n    pass\n"
 LAZY_ENTER_STATEMENT = "\nwith provider(lazy(Config, Config)):\n    pass\n"
 EXTEND_STATEMENT = "\nwith provider('scope', extend=True, added=1):\n    pass\n"
 
@@ -120,6 +125,7 @@ PROVIDED: tuple[tuple[str, str], ...] = (
     (REF, "use(CONFIG_REF)"),
     (REFERENCE, "reference.get()"),
     (ENTER, ENTER_STATEMENT),
+    (SEALED_ENTER, SEALED_ENTER_STATEMENT),
     (LAZY_ENTER, LAZY_ENTER_STATEMENT),
     (THREAD, "bound()"),
 )
@@ -148,6 +154,10 @@ def run() -> dict[str, float]:
     # The frozen row reuses read_used, so its delta is the proxy and nothing else.
     with provider(config, frozen=True):
         timings[FROZEN] = measure("read_used('r')", {**globals(), **locals()})
+
+    # The sealed row is the same read again, so its delta is the liveness check and nothing else.
+    with provider(config, sealed=True):
+        timings[SEALED] = measure("read_used('r')", {**globals(), **locals()})
 
     # And the lazy row prices the cell after the first read has already resolved it.
     with provider(lazy(Config, Config)):

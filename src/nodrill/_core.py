@@ -14,13 +14,14 @@ from types import MappingProxyType, TracebackType
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, overload
 
 from ._ambient import _ambient
-from ._debug import _diagnose, _record_enter, _record_exit, _uncounted
+from ._debug import _diagnose, _record_enter, _record_exit, _uncounted, _user_site
 from ._debug import _state as _debug_state
 from ._errors import NoProviderError, _describe_key
 from ._frozen import _FrozenProxy
 from ._lazy import _is_lazy, _Lazy, _LazyCell, _Resolution
 from ._refs import _is_ref, _key_target, _restore, _snapshot
 from ._report import _annotate
+from ._sealed import _Scope, _sealed_views
 
 T = TypeVar("T")
 D = TypeVar("D")
@@ -89,7 +90,13 @@ class _Provider(Generic[T]):
     Reusable sequentially, not re-entrant while active.
     """
 
-    __slots__ = ("_annotate", "_block", "_key", "_public", "_token", "_value")
+    __slots__ = ("_annotate", "_block", "_key", "_public", "_scope", "_token", "_value")
+
+    # A class attribute rather than a field, so an ordinary provider stores nothing for it.
+    _sealed = False
+
+    # Declared rather than assigned, since only a sealed provider ever has one to store.
+    _scope: _Scope
 
     def __init__(
         self,
@@ -112,13 +119,18 @@ class _Provider(Generic[T]):
                 "this provider is already active. Create a separate provider() "
                 "for nested or concurrent with blocks"
             )
+        value, public = self._value, self._public
+        if self._sealed:
+            # A fresh scope per entry, which is what stops a re-entry reviving the last one.
+            self._scope = scope = _Scope(self._key, _user_site()[0])
+            value, public = _sealed_views(value, public, scope)
         enclosing = _registry.get()
         updated = dict(enclosing)
-        updated[self._key] = self._public
+        updated[self._key] = public
         if _debug_state.recording:
             self._block, updated = _record_enter(self._key, enclosing, updated)
         self._token = _registry.set(updated)
-        return self._value
+        return value
 
     def __exit__(
         self,
@@ -256,6 +268,54 @@ class _ExtendingProvider(_Provider[Any]):
         return Namespace._named(self._name, values)  # noqa: SLF001
 
 
+class _Sealing:
+    """Expires this entry's views on the way out of the block.
+
+    A class rather than a field, so an ordinary provider pays nothing for a
+    flag it would always read as False, and the exit half costs it no branch
+    at all.  Empty slots, since a second slotted base would conflict with the
+    layout _Provider already has.
+    """
+
+    __slots__ = ()
+
+    _sealed = True
+
+    # What the mixin reads off whichever provider it sits in front of, declared because
+    # a self typed as that host would leave super() with nothing to resolve against.
+    _scope: _Scope
+    _token: Token[dict[str | type[Any], Any]] | None
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        # Before the unwind, so a value that escaped is dead the moment its block ends.
+        if self._token is not None:
+            self._scope.exited = _user_site()[0]
+        super().__exit__(exc_type, exc, tb)  # type: ignore[misc]  # a provider is always under it
+
+
+class _SealedProvider(_Sealing, _Provider[Any]):
+    """Context manager returned by provider(..., sealed=True)."""
+
+    __slots__ = ()
+
+
+class _SealedLazyProvider(_Sealing, _LazyProvider):
+    """Context manager returned by provider(lazy(...), sealed=True)."""
+
+    __slots__ = ()
+
+
+class _SealedExtendingProvider(_Sealing, _ExtendingProvider):
+    """Context manager returned by provider(..., extend=True, sealed=True)."""
+
+    __slots__ = ()
+
+
 @overload
 def provider(
     name: str,
@@ -264,6 +324,7 @@ def provider(
     frozen: bool = ...,
     extend: bool = ...,
     annotate: bool | None = ...,
+    sealed: bool = ...,
     **values: Any,
 ) -> _Provider[Namespace]: ...
 @overload
@@ -274,10 +335,17 @@ def provider(
     key: str | type[Any] = ...,
     frozen: bool = ...,
     annotate: bool | None = ...,
+    sealed: bool = ...,
 ) -> _Provider[T]: ...
 @overload
 def provider(
-    *, name: str, frozen: bool = ..., extend: bool = ..., annotate: bool | None = ..., **values: Any
+    *,
+    name: str,
+    frozen: bool = ...,
+    extend: bool = ...,
+    annotate: bool | None = ...,
+    sealed: bool = ...,
+    **values: Any,
 ) -> _Provider[Namespace]: ...
 def provider(
     *args: Any,
@@ -285,6 +353,7 @@ def provider(
     frozen: bool = False,
     extend: bool = False,
     annotate: bool | None = None,
+    sealed: bool = False,
     **values: Any,
 ) -> _Provider[Any]:
     """Make a value available to the whole call subtree through use().
@@ -301,7 +370,10 @@ def provider(
     consumers get a read-only view while the yielded object stays writable.
     annotate decides whether an exception leaving the block carries a note
     naming what the block provided, where None follows annotate_exceptions()
-    and True or False decides for this block alone.
+    and True or False decides for this block alone.  With sealed=True the
+    block and its consumers both get a view that raises ExpiredScopeError
+    once the block has exited, so a value captured by a closure or a
+    background task reports the escape where it happens.
     """
     target = _target_of(args, values)
     if isinstance(target, str):
@@ -311,7 +383,8 @@ def provider(
                 "provider is already registered under its name"
             )
         if extend:
-            return _ExtendingProvider(target, values, frozen=frozen, annotate=annotate)
+            extending = _SealedExtendingProvider if sealed else _ExtendingProvider
+            return extending(target, values, frozen=frozen, annotate=annotate)
         registered: str | type[Any] = target
         value: Any = Namespace._named(target, values)  # noqa: SLF001
     else:
@@ -332,11 +405,13 @@ def provider(
                     "provider(key=...) does not apply to a lazy target: lazy() already "
                     "names the key it registers under"
                 )
-            return _LazyProvider(target, frozen=frozen, annotate=annotate)
+            deferred = _SealedLazyProvider if sealed else _LazyProvider
+            return deferred(target, frozen=frozen, annotate=annotate)
         registered = _instance_key(target, key)
         value = target
     public = _FrozenProxy(value) if frozen else value
-    return _Provider(registered, value, public, annotate)
+    opened = _SealedProvider if sealed else _Provider
+    return opened(registered, value, public, annotate)
 
 
 def _target_of(args: tuple[Any, ...], values: dict[str, Any]) -> Any:

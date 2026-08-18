@@ -230,6 +230,6 @@ Where to go from here
 ---------------------
 
 You have now seen the whole library.
-The :doc:`topic guides </content/topics/index>` go through each piece properly, what ``frozen=True`` does, how the ambient :data:`~nodrill.context` namespace differs from a provider, what ``@inject`` will and will not accept, and what :func:`~nodrill.set_codec` adds when a namespace holds something :mod:`json` has nowhere to put.
+The :doc:`topic guides </content/topics/index>` go through each piece properly, what ``frozen=True`` and ``sealed=True`` do, how the ambient :data:`~nodrill.context` namespace differs from a provider, what ``@inject`` will and will not accept, and what :func:`~nodrill.set_codec` adds when a namespace holds something :mod:`json` has nowhere to put.
 
 If you would rather read a finished program, the :doc:`how-to guides </content/howto/index>` are complete, runnable files.

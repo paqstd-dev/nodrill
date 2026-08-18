@@ -13,6 +13,7 @@ The whole public surface is the import below, and everything in it comes from th
    from nodrill import (
        EnvelopeVersionError,
        Executor,
+       ExpiredScopeError,
        FromCtx,
        FrozenContextError,
        KeyResolutionError,

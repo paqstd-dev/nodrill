@@ -122,6 +122,46 @@ Freezing is shallow, and stays that way, because a deep freeze means proxying ev
 
 Patching ``__setattr__`` on the instance was rejected, since it mutates user objects, breaks on ``__slots__`` and frozen dataclasses, and is unsafe under concurrency.
 
+sealed=True is a proxy in front of the others
+----------------------------------------------
+
+``frozen`` decides what a consumer may do, ``lazy`` decides when the value is built, and ``sealed`` decides when anything may be done at all.
+Three questions, so three proxies rather than one class carrying three flags, which is what the plan before 0.2.0 said and what contact with ``lazy`` reversed.
+``_sealed.py`` writes its own generators over the same tables in ``_views.py``, as ``_lazy.py`` does, because each one needs the operation's own name to report and a check in front of the delegation, so what a shared generator would share is the one line that differs.
+The three attribute members are written out rather than generated for a measured reason, since a generator taking the name through ``*args`` costs half as much again on the operation a sealed value is read through most, while ``__eq__``, ``__ne__`` and ``__hash__`` are generated because they are off that path.
+
+Composition is by nesting, and the seal is the outer one.
+An expired write therefore reports the expiry rather than the freeze, and an expired read of an unresolved lazy value raises without running the factory.
+A second hop is paid only where two flags are combined, and each flag alone costs what it costs today.
+
+The seal covers the object the block yields as well as the registry-side view, which is the one asymmetry with ``frozen=True``.
+A frozen block keeps a writable handle because the owner has to write, while the reference that escapes is the one the ``with`` statement yielded, so sealing only the registry side would miss the case the feature exists for.
+The two are one object while nothing is frozen, so ``use(key) is session`` stays true.
+
+The scope is minted per entry and expired on exit, never reused, because a reference that came back to life on re-entry would be a worse bug than the stale one being reported.
+It holds the key and the two sites and never the value, so nothing outlives its block because sealing was on.
+
+The three sites come from the same ``_user_site()`` the debug ledger reads, which is why this feature waited for that one rather than growing a second, slightly different way of naming a line.
+Recording them does not need debug mode, since a sealed provider records its own sites for its own error.
+
+``__class__``, ``__repr__`` and ``__dir__`` are the three members that answer after expiry, and none of them hands back the target.
+An ``isinstance`` check inside an ``except`` clause must not itself raise, and a ``repr`` or a ``dir`` that blows up makes the session worse than the bug did.
+``__class__`` reads the target's own ``__class__`` rather than its ``type()``, which is what makes the spoof compose, since a seal over a frozen view or a lazy cell would otherwise report the private class of the view underneath it.
+
+The in-place operators have a generator of their own.
+``operator.iadd`` hands back the target, and Python then rebinds the caller's name to it, so forwarding the result would quietly replace a sealed handle with the raw object it was covering.
+The generated method returns the view again when the operation mutated the target in place, and the result itself when the target was immutable and the operation built a new object, which was never the provided value and so is not sealed.
+
+``ExpiredScopeError`` is a ``RuntimeError`` and deliberately not an ``AttributeError``, which is the one place it parts company with ``FrozenContextError``.
+``getattr(value, name, default)`` would otherwise answer with the default, and that is not a hypothetical, since the by-name form of ``@inject`` reads its attribute exactly that way and would have injected the default for a dead scope instead of reporting it.
+
+The exit site is recorded always and printed only when it differs from the open site, matching what the debug ledger does with the same fact.
+CPython attributes a ``with`` statement's implicit ``__exit__`` to the ``with`` line, so for the ordinary shape the two are equal and a second line would repeat what the reader already has, while an ``ExitStack`` or an explicit close is exactly the case worth naming.
+
+The flag is a class rather than a field.
+``_Provider._sealed`` is ``False`` on the class and ``True`` on three one-line subclasses, so an ordinary provider stores nothing and pays one branch in ``__enter__``, and the exit half is a mixin method it never reaches.
+Entering a scope is about four percent dearer than before this feature, measured against the same revision in one sitting, and reading a value is unchanged, which is where the cost was not allowed to land.
+
 lazy is a cell, not a branch in use()
 -------------------------------------
 
@@ -244,12 +284,12 @@ provider() signature
 The implementation takes ``*args``, so a positional target wins and a ``name=`` keyword becomes a prefill value, and with no positional the ``name=`` keyword is the key, strings only.
 ``Namespace.__init__(self, /, **values)`` is positional-only for the same reason, so ``Namespace(self=1)`` is legal data.
 
-``frozen``, ``key``, ``extend`` and ``annotate`` are the four names that cannot be prefill data, being the function's own parameters.
+``frozen``, ``key``, ``extend``, ``annotate`` and ``sealed`` are the five names that cannot be prefill data, being the function's own parameters.
 That list is the running cost of the design, and each new name has to argue for itself against two tests rather than against a count.
 A count was tried as the rule and does not work, because the number it stops at is only the number that happened to be reached first.
 
 The first test is that the name describes the block rather than the value it provides.
-``frozen``, ``key`` and ``extend`` describe what the provider registers and hands out, and ``annotate`` describes what the block says on its way out.
+``frozen``, ``key`` and ``extend`` describe what the provider registers and hands out, ``annotate`` describes what the block says on its way out, and ``sealed`` describes how long what it hands out is good for.
 The second is that nothing at the call site can say the same thing.
 A value can be handed over already frozen by the caller, so the argument for ``frozen`` is about who sees the read-only view rather than about what the object is, and a scope that annotates itself has no call to hang the decision on at all.
 A name failing either test is a different constructor rather than a further flag.
@@ -257,6 +297,9 @@ A name failing either test is a different constructor rather than a further flag
 ``annotate`` passes both.
 A process-wide switch alone cannot let a layer holding a credential stay out of a traceback while the rest of the process annotates, and that layer is exactly the one a reader would rather not find in an error tracker, so the override has to be per block.
 A second entry point was rejected here for the same reason it was rejected for ``extend``, since a reader would then need two spellings before they could say what a scope does.
+
+``sealed`` passes both, and the second one decisively.
+It describes the block's own lifetime and nothing about the value, and a ``seal(value)`` helper at the call site would have to be told when the block exits, which is the one thing only the block knows.
 
 extend=True merges by copying
 -----------------------------
@@ -400,7 +443,9 @@ Module layout
 -------------
 
 ``_core`` is the registry, holding ``provider``, ``use``, ``set_default``, ``active``, ``Namespace`` and ``isolate``.
-``_frozen`` and ``_ambient`` hold the two things that share nothing with it but a ContextVar, the read-only proxy and the ambient namespace, both of which are mostly protocol tables and would otherwise dominate the file they sit in.
+``_views`` and ``_ambient`` hold the two things that share nothing with it but a ContextVar, what every view over a provided value shares and the ambient namespace, both of which are mostly protocol tables and would otherwise dominate the file they sit in.
+``_views`` owns the tables and the ``_View`` base, so ``_frozen``, ``_lazy`` and ``_sealed`` are one view each in a file of its own and none of them has to import another.
+That base is also how ``_lazy`` sees through a view to its target when it checks whether a factory returned the value it is building, without knowing which kinds of view exist.
 ``_debug`` is instrumentation rather than registry, and sits beside ``_core`` because nothing on a successful lookup reads it.
 ``_report`` is reporting rather than registry, sharing with ``_core`` only the value a provider is holding, and nothing in it runs until an exception is already leaving a block.
 ``_inject``, ``_concurrency`` and ``_errors`` are the remaining features.

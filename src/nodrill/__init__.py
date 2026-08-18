@@ -11,6 +11,7 @@ from ._core import Namespace, active, isolate, provider, set_default, use
 from ._debug import debug, explain
 from ._errors import (
     EnvelopeVersionError,
+    ExpiredScopeError,
     FrozenContextError,
     KeyResolutionError,
     NoProviderError,
@@ -28,6 +29,7 @@ __version__ = "0.3.0"
 __all__ = [
     "EnvelopeVersionError",
     "Executor",
+    "ExpiredScopeError",
     "FromCtx",
     "FrozenContextError",
     "KeyResolutionError",

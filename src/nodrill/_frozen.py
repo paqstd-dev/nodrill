@@ -1,92 +1,18 @@
 """The read-only view stored for values provided with frozen=True.
 
-Special methods are looked up on the type, never through __getattr__, so every
-protocol the proxy forwards has to exist on the class.  The tables below are
-generated into methods after the class body.
+Reads and the tabled protocols delegate to the target while writes raise, so
+the block keeps a writable handle and its callees do not.  The protocols come
+from the tables in _views, and _BLOCKED below is the one table this view owns,
+being the writes it refuses where another view forwards them.
 """
 
 from __future__ import annotations
 
-import operator
 from collections.abc import Callable
 from typing import Any, SupportsIndex
 
 from ._errors import FrozenContextError
-
-
-def _call(target: Any, *args: Any, **kwargs: Any) -> Any:
-    return target(*args, **kwargs)
-
-
-_FORWARDED: dict[str, Callable[..., Any]] = {
-    "__str__": str,
-    "__bytes__": bytes,
-    "__format__": format,
-    "__bool__": bool,
-    "__int__": int,
-    "__float__": float,
-    "__complex__": complex,
-    "__index__": operator.index,
-    "__round__": round,
-    "__abs__": abs,
-    "__neg__": operator.neg,
-    "__pos__": operator.pos,
-    "__invert__": operator.invert,
-    "__len__": len,
-    "__iter__": iter,
-    "__reversed__": reversed,
-    "__next__": next,
-    "__contains__": operator.contains,
-    "__getitem__": operator.getitem,
-    "__call__": _call,
-    # __eq__ and __ne__ sit in the class body, so a target's own answer is not coerced to bool.
-    "__lt__": operator.lt,
-    "__le__": operator.le,
-    "__gt__": operator.gt,
-    "__ge__": operator.ge,
-    "__add__": operator.add,
-    "__sub__": operator.sub,
-    "__mul__": operator.mul,
-    "__matmul__": operator.matmul,
-    "__truediv__": operator.truediv,
-    "__floordiv__": operator.floordiv,
-    "__mod__": operator.mod,
-    "__divmod__": divmod,
-    "__pow__": pow,
-    "__lshift__": operator.lshift,
-    "__rshift__": operator.rshift,
-    "__and__": operator.and_,
-    "__or__": operator.or_,
-    "__xor__": operator.xor,
-}
-
-_REFLECTED: dict[str, Callable[[Any, Any], Any]] = {
-    "__radd__": operator.add,
-    "__rsub__": operator.sub,
-    "__rmul__": operator.mul,
-    "__rmatmul__": operator.matmul,
-    "__rtruediv__": operator.truediv,
-    "__rfloordiv__": operator.floordiv,
-    "__rmod__": operator.mod,
-    "__rdivmod__": divmod,
-    "__rpow__": pow,
-    "__rlshift__": operator.lshift,
-    "__rrshift__": operator.rshift,
-    "__rand__": operator.and_,
-    "__ror__": operator.or_,
-    "__rxor__": operator.xor,
-}
-
-# The async ones hand back the target's own awaitable, so none of these needs async def.
-_INVOKED = (
-    "__enter__",
-    "__exit__",
-    "__aenter__",
-    "__aexit__",
-    "__await__",
-    "__aiter__",
-    "__anext__",
-)
+from ._views import _FORWARDED, _INVOKED, _REFLECTED, _View
 
 # Absent in-place operators make `+=` fall back to __add__, which leaves the target alone.
 _BLOCKED = {
@@ -94,8 +20,10 @@ _BLOCKED = {
     "__delitem__": "cannot delete item {0!r}",
 }
 
+_UNCOPYABLE = "frozen context views cannot be pickled or copied"
 
-class _FrozenProxy:
+
+class _FrozenProxy(_View):
     """Read-only view over an object provided with frozen=True.
 
     Reads and the tabled protocols delegate to the target, writes raise, and
@@ -111,7 +39,9 @@ class _FrozenProxy:
 
     @property  # type: ignore[misc]  # intentionally read-only
     def __class__(self) -> type[Any]:  # pyright: ignore[reportIncompatibleMethodOverride]
-        return type(self._nodrill_target)
+        # The target's own answer, so a view over another view reports what is under both.
+        answer: type[Any] = self._nodrill_target.__class__
+        return answer
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._nodrill_target, name)
@@ -138,7 +68,15 @@ class _FrozenProxy:
         return hash(self._nodrill_target)
 
     def __reduce_ex__(self, protocol: SupportsIndex) -> Any:
-        raise TypeError("frozen context views cannot be pickled or copied")
+        raise TypeError(_UNCOPYABLE)
+
+    # On the class, since copy looks these up on the instance and __getattr__ would
+    # hand back the target's own hook.
+    def __copy__(self) -> Any:
+        raise TypeError(_UNCOPYABLE)
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> Any:
+        raise TypeError(_UNCOPYABLE)
 
     def __dir__(self) -> list[str]:
         return dir(self._nodrill_target)

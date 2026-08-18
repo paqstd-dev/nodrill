@@ -26,28 +26,8 @@ async def _async_gen() -> AsyncIterator[str]:
     yield read_tag()
 
 
-# Runs a callable on a fresh thread and hands back its result or its exception.
+# What the in_thread fixture in conftest hands over, as a type.
 ThreadRunner = Callable[[Callable[[], Any]], Any]
-
-
-@pytest.fixture
-def in_thread() -> ThreadRunner:
-    def run(target: Callable[[], Any]) -> Any:
-        box: list[Any] = []
-
-        def runner() -> None:
-            try:
-                box.append(target())
-            except Exception as exc:
-                box.append(exc)
-
-        thread = threading.Thread(target=runner)
-        thread.start()
-        thread.join()
-        [result] = box
-        return result
-
-    return run
 
 
 @pytest.fixture

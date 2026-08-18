@@ -4,7 +4,7 @@ Providers and scopes
 ====================
 
 A provider makes one value visible to everything that runs inside a ``with`` block, however deep.
-This page covers the shapes ``provider`` accepts, what a scope does on entry and exit, how mutation flows, and what ``lazy`` and ``frozen=True`` change.
+This page covers the shapes ``provider`` accepts, what a scope does on entry and exit, how mutation flows, and what ``lazy``, ``frozen=True`` and ``sealed=True`` change.
 
 .. contents::
    :local:
@@ -304,6 +304,118 @@ Pickling and copying raise :exc:`TypeError` rather than silently handing back an
 
 This is a guard rail against accidental writes, not a security boundary.
 Code that goes looking for the wrapped object can reach it.
+
+.. _topics-providers-sealed:
+
+Sealed providers
+----------------
+
+Freezing says what a consumer may do with a value.
+Sealing says when.
+
+A provided value can outlive the block that provided it, and usually by accident.
+
+.. code-block:: python
+
+   with provider(Session(dsn)) as session:
+       background.append(lambda: session.query(...))    # runs later
+
+By the time that closure runs the session is closed, or worse, back in a pool and serving another request.
+Nothing raises where the mistake was made.
+Something fails later, somewhere else, with a message about a closed connection or with quietly wrong results.
+
+The routes into a stale reference are all ordinary code, a closure, a background task, a cache, a callback registered inside the block.
+
+``sealed=True`` makes the value say so.
+
+.. code-block:: python
+
+   from nodrill import ExpiredScopeError, provider
+
+   with provider(Session(dsn), sealed=True) as session:
+       handle(session)
+
+   session.query(...)                   # ExpiredScopeError
+
+.. code-block:: text
+
+   ExpiredScopeError: Session.query was used after its provider block exited.
+     opened at web.py:42
+     used here at worker.py:88
+
+The sites are the feature.
+The frame that raises is never the frame that made the mistake, so a message naming only the last one would leave the search where it started.
+Where the block exited is recorded too and printed only when it differs from where it opened, since a ``with`` statement exits on its own line and an :class:`~contextlib.ExitStack` does not.
+
+The seal covers the object the block yields
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This is the one place where sealing and freezing are not symmetric.
+``frozen=True`` deliberately hands the block a writable handle, because somebody has to write.
+``sealed=True`` seals both sides, because the reference that escapes is the one the ``with`` statement yielded, and sealing only the registry side would miss the case the feature is for.
+
+While the block is open the value behaves as itself, ``use(Session) is session`` holds as it does for an ordinary provider, and ``isinstance`` answers as it always did.
+
+The one thing to know is that the block now holds a view rather than the object, which the interpreter can tell apart even though your code cannot.
+A C-level check of the concrete type sees the view, so ``json.dumps`` on a sealed ``dict``, ``open()`` on a sealed :class:`~pathlib.Path` and :class:`weakref.ref` on a sealed object all refuse, inside the block, where ``frozen=True`` would not.
+Seal the objects your own code reads and pass the raw value where a C-level API is going to inspect it.
+
+A second entry does not revive the first
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Each entry mints its own seal, so a reference held from an earlier entry of the same provider object stays dead.
+
+.. code-block:: python
+
+   block = provider(Session(dsn), sealed=True)
+
+   with block as first:
+       pass
+   with block as second:
+       first.query(...)                 # ExpiredScopeError, and second works
+
+A reference that came back to life would be a worse bug than the one being reported, since it would work in testing and hand a pooled session to the wrong request in production.
+
+Composing with lazy and frozen
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The three flags answer three different questions, so they stack, and the seal is the outer one.
+
+.. code-block:: python
+
+   with provider(lazy(Session, connect), frozen=True, sealed=True) as session:
+       session.dsn = "the owner can still write"
+
+An expired write reports the expiry rather than the freeze, and an expired read of a lazy value raises without running the factory, which is what keeps a scope nobody read from opening a connection on its way out.
+``isinstance`` holds through either combination, since each view answers with the class the one under it reports.
+
+What it does not catch
+~~~~~~~~~~~~~~~~~~~~~~
+
+This is a guard rail, in exactly the sense ``frozen=True`` is one, and the limits are the same ones.
+
+- An attribute that escapes instead of the object is not detected, so ``session.connection`` handed out separately stays live, and so does a bound method such as ``session.query`` stored somewhere before the block ended.
+- A protocol that hands back another object hands back the target's own, so an iterator taken with ``iter()`` and whatever ``with use(...)`` yields both outlive the block.
+- Sealing is shallow, as freezing is.
+- ``type(proxy)`` tells the truth, and code that goes looking for the wrapped object can reach it.
+- A layer opened with ``extend=True`` copies the attributes it inherits, so the copy is an ordinary namespace and outlives the sealed block it came from.
+- The check costs a hop on every access for the whole life of the block, which is why it is off by default.
+- A sealed proxy holds its target for as long as anything holds the proxy, so this reports an escape rather than preventing one.
+
+Pickling and copying are refused outright, live or expired, since either would hand back an unsealed duplicate.
+
+The expiry is reported and never softened.
+:exc:`~nodrill.ExpiredScopeError` is not an :exc:`AttributeError`, so ``getattr(value, name, default)`` raises rather than answering with the default, and ``hasattr`` raises rather than returning ``False``.
+A guard that quietly took the other branch would hide exactly the escape being reported.
+
+Three things keep answering after the block exits, and none of them hands back the target.
+``isinstance`` holds, because a check inside an ``except`` clause must not itself raise, while ``repr`` describes the expiry instead of blowing up and ``dir`` still lists the names, because those two are what a debugger reaches for.
+
+.. code-block:: python
+
+   repr(session)                        # '<expired Session, opened at web.py:42, exited at web.py:47>'
+
+What it does catch is the common case, which is the whole object captured and touched later.
 
 .. seealso::
 

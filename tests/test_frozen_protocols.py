@@ -1,5 +1,6 @@
 """The protocols _FrozenProxy forwards, blocks, or deliberately leaves alone."""
 
+import math
 from collections.abc import AsyncIterator, Generator
 from typing import Any
 
@@ -40,6 +41,15 @@ class Number:
 
     def __abs__(self) -> int:
         return abs(self.value)
+
+    def __floor__(self) -> str:
+        return "floored"
+
+    def __ceil__(self) -> str:
+        return "ceiled"
+
+    def __trunc__(self) -> str:
+        return "truncated"
 
     def __neg__(self) -> int:
         return -self.value
@@ -124,6 +134,10 @@ class TestForwardedProtocols:
             assert [0, 1, 2, 3, 4, 5, 6, 7, 8][p] == 7  # __index__
             assert round(p) == 7
             assert abs(p) == 7
+            # The target's own answer, since falling through __float__ would round a float.
+            assert math.floor(p) == "floored"
+            assert math.ceil(p) == "ceiled"
+            assert math.trunc(p) == "truncated"
             assert -p == -7
             assert +p == 7
             assert ~p == ~7
