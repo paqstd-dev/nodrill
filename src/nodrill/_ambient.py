@@ -61,7 +61,7 @@ class _AmbientContext:
         return f"<nodrill.context [{keys}]>"
 
 
-context = _AmbientContext()
+context: _AmbientContext = _AmbientContext()
 """An ambient attribute namespace, isolated per thread and per asyncio task."""
 
 

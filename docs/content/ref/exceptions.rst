@@ -208,3 +208,39 @@ UnusedProviderWarning
       warnings.filterwarnings("ignore", category=nodrill.UnusedProviderWarning)
 
    It subclasses :exc:`UserWarning`, which is what an unfiltered warning is reported as anyway, so nothing that already catches those stops seeing it.
+
+OrphanedProviderWarning
+-----------------------
+
+.. exception:: OrphanedProviderWarning
+
+   Bases: :exc:`UserWarning`
+
+   Warned when a provider block exits in a different context than the one it opened in, so the value it provided stays visible to whoever opened it.
+
+   An async generator holding the block and abandoned without closing it is the way this happens, since asyncio finalizes it through a task of its own and a token cannot be reset from a context it was not created in.
+   The generator body ran in the caller's context, which is where the value was left, and that context is still live.
+
+   .. code-block:: python
+
+      async def rows():
+          async with provider("db", dsn=dsn):
+              for row in await fetch():
+                  yield row
+
+      async with aclosing(rows()) as stream:   # without this, breaking out warns and leaks
+          async for row in stream:
+              if done(row):
+                  break
+
+   :func:`contextlib.aclosing` closes the generator where it was iterated, which is the context the block belongs to, so the reset lands and the warning does not fire.
+   The fix is the caller's to apply, since only the caller knows when the iteration stops early.
+   The alternative is to keep the block out of the generator and open it around the loop.
+
+   The warning names the line the block was opened at, and it is a category of its own so it can be silenced by kind.
+
+   .. code-block:: python
+
+      warnings.filterwarnings("ignore", category=nodrill.OrphanedProviderWarning)
+
+   Silencing it does not make the value unwind, so what goes away is the report and not the leak.

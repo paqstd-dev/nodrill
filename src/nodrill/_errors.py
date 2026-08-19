@@ -40,7 +40,7 @@ class NoProviderError(LookupError):
         self, key: Any, active_keys: Iterable[Any] = (), diagnosis: str | None = None
     ) -> None:
         self.key = key
-        self.active_keys = tuple(active_keys)
+        self.active_keys: tuple[Any, ...] = tuple(active_keys)
         self.diagnosis = diagnosis
         super().__init__(self._build_message())
 
@@ -166,3 +166,12 @@ class FrozenContextError(AttributeError):
 
 class UnusedProviderWarning(UserWarning):
     """Warned by debug(unused=True) when a block exits with nothing having read it."""
+
+
+class OrphanedProviderWarning(UserWarning):
+    """Warned when a block exits in a different context than it opened in.
+
+    A token cannot be reset from a context it was not created in, so such
+    a block never unwinds and the value it provided stays visible to
+    whoever opened it.
+    """
