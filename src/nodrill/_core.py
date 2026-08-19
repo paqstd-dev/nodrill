@@ -15,7 +15,7 @@ from types import MappingProxyType, TracebackType
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, overload
 
 from ._ambient import _ambient
-from ._debug import _diagnose, _record_enter, _record_exit, _uncounted, _user_site
+from ._debug import _diagnose, _record_enter, _record_exit, _recount, _uncounted, _user_site
 from ._debug import _state as _debug_state
 from ._errors import NoProviderError, OrphanedProviderWarning, _describe_key
 from ._frozen import _FrozenProxy
@@ -37,6 +37,9 @@ _registry: ContextVar[dict[str | type[Any], Any]] = ContextVar(
 _defaults: dict[type[Any], Callable[[], Any]] = {}
 
 _MISSING = object()
+
+# The blocks open in this context, oldest first, so one closing out of order can be taken out.
+_open_blocks: ContextVar[tuple[_Provider[Any], ...]] = ContextVar("nodrill_open", default=())
 
 # A tuple rather than `str | type`, which would allocate a UnionType on every evaluation.
 _KEY_TYPES = (str, type)
@@ -85,13 +88,40 @@ class Namespace:
         return f"Namespace({inner})"
 
 
+def _rebuilt(
+    chain: tuple[_Provider[Any], ...], leaving: _Provider[Any]
+) -> dict[str | type[Any], Any]:
+    """Return what the blocks still open describe, for one closing out of order.
+
+    Resetting through the token would reinstate a snapshot taken before the
+    others opened, which is how a closed block's value survives a sibling.
+    The blocks themselves are the only record of what is still open, so the
+    mapping is built from them, oldest first, and the innermost wins.
+    """
+    rebuilt: dict[str | type[Any], Any] = {}
+    for open_block in chain:
+        entered = open_block._entered  # noqa: SLF001
+        if open_block is not leaving and entered is not None:
+            rebuilt[open_block._key] = entered[open_block._key]  # noqa: SLF001
+    return _recount(rebuilt, _registry.get())
+
+
 class _Provider(Generic[T]):
     """Context manager returned by provider().
 
     Reusable sequentially, not re-entrant while active.
     """
 
-    __slots__ = ("_annotate", "_block", "_key", "_public", "_scope", "_token", "_value")
+    __slots__ = (
+        "_annotate",
+        "_block",
+        "_entered",
+        "_key",
+        "_public",
+        "_scope",
+        "_token",
+        "_value",
+    )
 
     # A class attribute rather than a field, so an ordinary provider stores nothing for it.
     _sealed = False
@@ -113,6 +143,8 @@ class _Provider(Generic[T]):
         self._annotate = annotate
         self._token: Token[dict[str | type[Any], Any]] | None = None
         self._block: int | None = None
+        # The exact mapping installed, which is how exit tells an ordinary unwind from a rebuild.
+        self._entered: dict[str | type[Any], Any] | None = None
 
     def __enter__(self) -> T:
         if self._token is not None:
@@ -130,7 +162,9 @@ class _Provider(Generic[T]):
         updated[self._key] = public
         if _debug_state.recording:
             self._block, updated = _record_enter(self._key, enclosing, updated)
+        self._entered = updated
         self._token = _registry.set(updated)
+        _open_blocks.set((*_open_blocks.get(), self))
         return value
 
     def __exit__(
@@ -141,12 +175,26 @@ class _Provider(Generic[T]):
     ) -> None:
         token, self._token = self._token, None
         if token is not None:
-            orphaned = False
-            try:
-                _registry.reset(token)
-            except (ValueError, RuntimeError):
-                # The context the token belongs to is not the one exiting, so nothing to undo here.
-                orphaned = True
+            entered, self._entered = self._entered, None
+            chain = _open_blocks.get()
+            # Ordinary nesting closes the newest block, so the common case is one comparison.
+            if chain and chain[-1] is self:
+                ours = True
+                _open_blocks.set(chain[:-1])
+            else:
+                ours = any(open_block is self for open_block in chain)
+                if ours:
+                    _open_blocks.set(tuple(b for b in chain if b is not self))
+            if ours:
+                if _registry.get() is not entered:
+                    # A sibling rebuilt the mapping, so every other token points at a stale one.
+                    _registry.set(_rebuilt(chain, self))
+                else:
+                    try:
+                        _registry.reset(token)
+                    except (ValueError, RuntimeError):
+                        # A copied context carries the chain, and the token belongs to neither.
+                        ours = False
             # Gated on what enter recorded, not on a switch a thread can flip.
             block, self._block = self._block, None
             if block is not None:
@@ -155,7 +203,7 @@ class _Provider(Generic[T]):
             if exc is not None:
                 _annotate(exc, self._key, self._noted(), annotate=self._annotate)
             # Last, since a filter making the warning an error would otherwise skip all of it.
-            if orphaned:
+            if not ours:
                 self._warn_orphaned(displacing=exc is not None)
 
     def _warn_orphaned(self, *, displacing: bool) -> None:

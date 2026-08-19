@@ -148,6 +148,13 @@ class _CountingRegistry(dict[_Key, Any]):
         return value
 
 
+def _recount(registry: _Registry, like: _Registry) -> _Registry:
+    """Return registry as the same kind as like, so read counting survives a rebuild."""
+    if isinstance(like, _CountingRegistry):
+        return _CountingRegistry(registry, like.owners)
+    return registry
+
+
 def _uncounted(registry: _Registry) -> _Registry:
     """Return a registry that scores no reads, for active() rather than a lookup."""
     return dict(registry) if isinstance(registry, _CountingRegistry) else registry

@@ -100,3 +100,36 @@ class TestOrphanedBookkeeping:
         thread.join()
         with pytest.warns(OrphanedProviderWarning, match="did not open in"):
             entered.__exit__(None, None, None)
+
+
+def _tenant(slug: str) -> Iterator[str]:
+    with provider("tenant", slug=slug):
+        yield str(use("tenant").slug)
+        yield str(use("tenant").slug)
+
+
+def _interleave() -> None:
+    """Open two blocks and close them in the order they opened, which is the wrong one."""
+    first, second = _tenant("acme"), _tenant("globex")
+    list(zip(first, second, strict=False))
+    list(first)
+    list(second)
+
+
+class TestOutOfOrderExit:
+    """A block closing before one that opened later must not bring its snapshot back."""
+
+    def test_nothing_survives_both_blocks(self) -> None:
+        _interleave()
+        with pytest.raises(NoProviderError):
+            use("tenant")
+
+    def test_an_enclosing_block_is_left_alone(self) -> None:
+        with provider("tenant", slug="outer"):
+            _interleave()
+            assert use("tenant").slug == "outer"
+
+    def test_read_counting_survives_the_rebuild(self) -> None:
+        with debug(unused=True), provider("tenant", slug="outer"):
+            _interleave()
+            assert use("tenant").slug == "outer"
