@@ -18,24 +18,24 @@ The first rows are one function doing one read, reached six ways, so they can be
 ================================================================  ====  ===
 operation                                                         ns    ×
 ================================================================  ====  ===
-one read in a function, value passed in as a parameter            22    1.0
-the same read through `use()`                                     60    2.7
-the same read through `@inject`                                   71    3.2
-the same read through a `frozen=True` provider                    115   5.1
-the same read through a `sealed=True` provider                    122   5.4
-the same read through a resolved `lazy` provider                  137   6.1
-`use(Config)` on its own, without the call frame                  44    2.0
-the same lookup through a `ref()` key                             145   6.5
+one read in a function, value passed in as a parameter            23    1.0
+the same read through `use()`                                     61    2.7
+the same read through `@inject`                                   72    3.2
+the same read through a `frozen=True` provider                    118   5.2
+the same read through a `sealed=True` provider                    128   5.6
+the same read through a resolved `lazy` provider                  143   6.3
+`use(Config)` on its own, without the call frame                  45    2.0
+the same lookup through a `ref()` key                             153   6.7
 bare `ContextVar.get()`, for reference                            16    0.7
-`with provider(...)`, enter and exit                              649   29
-the same with 8 providers already open                            735   33
-`with provider(..., sealed=True)`, entered and exited             2147  96
-`with provider(lazy(...))`, entered and exited unread             1600  71
-`with provider(..., extend=True)`, over an 8-attribute namespace  1788  80
-`wrap(fn)()`, per call into a thread                              543   24
+`with provider(...)`, enter and exit                              1292  57
+the same with 8 providers already open                            1395  61
+`with provider(..., sealed=True)`, entered and exited             2857  125
+`with provider(lazy(...))`, entered and exited unread             2252  99
+`with provider(..., extend=True)`, over an 8-attribute namespace  2440  107
+`wrap(fn)()`, per call into a thread                              644   28
 ================================================================  ====  ===
 
-CPython 3.14.5 on macOS 26.6, arm64, measured 2026-08-19.
+CPython 3.14.5 on macOS 26.6, arm64, measured 2026-08-20.
 
 .. end benchmarks
 
