@@ -232,6 +232,16 @@ def _build_plan(
         # May raise NameError on unresolved forward refs.
         hints = get_type_hints(func, include_extras=True)
 
+    for param in params:
+        if isinstance(param.default, _FromCtxMarker):
+            raise TypeError(
+                f"@inject: {param.name} carries from_ctx() as its default, where it is "
+                f"data rather than a marker, so nothing is injected and the marker "
+                f"itself reaches the body. It belongs in the annotation. Write "
+                f"`{param.name}: FromCtx[T] = injected`, or "
+                f"`{param.name}: Annotated[T, from_ctx()] = injected` to name a key."
+            )
+
     markers: list[_Marker] = []
     marker_names: set[str] = set()
     for param in params:
@@ -562,7 +572,10 @@ def _compile_wrapper(
     # Registration waits for the wrapper, since only its finalizer below removes the entry.
     _register_source(filename, source)
     weakref.finalize(wrapper, linecache.cache.pop, filename, None)
-    return wraps(func)(wrapper)
+    bound = wraps(func)(wrapper)
+    # wraps aims __wrapped__ at func, whose injected parameters carry no default to report.
+    bound.__signature__ = inspect.signature(bound, follow_wrapped=False)  # type: ignore[attr-defined]
+    return bound
 
 
 # Process-unique, since qualnames repeat and probing linecache breaks after clearcache().

@@ -2,7 +2,7 @@ import copy
 import pickle
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 import pytest
 
@@ -201,3 +201,35 @@ class TestUseDefault:
 
     def test_none_is_a_real_default(self) -> None:
         assert use("missing", default=None) is None
+
+
+class Store(Protocol):
+    def put(self, blob: bytes) -> None: ...
+
+
+class Base:
+    pass
+
+
+class Derived(Base):
+    pass
+
+
+class TestTheHintCanBeFollowed:
+    """A hint proposing what the caller cannot write is worse than no hint."""
+
+    def test_a_subclass_in_scope_names_the_exact_key_rule(self) -> None:
+        with provider(Derived()), pytest.raises(NoProviderError) as raised:
+            use(Base)
+        message = str(raised.value)
+        assert "Derived is active and subclasses Base" in message
+        assert "provider(instance, key=Base)" in message
+        assert "provider(Base(...))" not in message
+
+    def test_a_protocol_is_never_offered_as_a_constructor(self) -> None:
+        with pytest.raises(NoProviderError) as raised:
+            # The point of key= is that consumers depend on the protocol, not the class.
+            use(Store)  # type: ignore[type-abstract]
+        message = str(raised.value)
+        assert "provider(instance, key=Store)" in message
+        assert "provider(Store(...))" not in message

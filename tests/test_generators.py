@@ -1,11 +1,21 @@
 import asyncio
+import threading
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator
 from contextlib import aclosing
+from contextvars import Context
 from typing import Any
 
 import pytest
 
-from nodrill import NoProviderError, OrphanedProviderWarning, inject, provider, use
+from nodrill import (
+    NoProviderError,
+    OrphanedProviderWarning,
+    debug,
+    explain,
+    inject,
+    provider,
+    use,
+)
 
 
 def _sync_gen() -> Iterator[int]:
@@ -52,7 +62,7 @@ class TestAsyncGeneratorFinalization:
         stream = _held("x")
         assert await anext(stream) == 0
         # asyncio finalizes an abandoned generator this way, in a task with its own context.
-        with pytest.warns(OrphanedProviderWarning, match="different context"):
+        with pytest.warns(OrphanedProviderWarning, match="did not open in"):
             await asyncio.create_task(stream.aclose())
         assert use("app").mode == "x"
 
@@ -63,3 +73,30 @@ class TestAsyncGeneratorFinalization:
                     break
         with pytest.raises(NoProviderError):
             use("app")
+
+
+class TestOrphanedBookkeeping:
+    """A filter making the warning an error must not cost the unwind its bookkeeping."""
+
+    def test_a_live_exception_is_not_displaced(self) -> None:
+        entered = provider("svc", n=1)
+        Context().run(entered.__enter__)
+        failure = ValueError("the real failure")
+        # No raise, since the warning must never become the exception the caller sees.
+        entered.__exit__(ValueError, failure, None)
+
+    def test_the_ledger_still_records_the_exit(self) -> None:
+        with debug():
+            entered = provider("svc", n=1)
+            Context().run(entered.__enter__)
+            with pytest.raises(OrphanedProviderWarning):
+                entered.__exit__(None, None, None)
+            assert "provider block open" not in explain()
+
+    def test_a_thread_that_did_not_open_the_block_cannot_close_it(self) -> None:
+        entered = provider("svc", n=1)
+        thread = threading.Thread(target=entered.__enter__)
+        thread.start()
+        thread.join()
+        with pytest.warns(OrphanedProviderWarning, match="did not open in"):
+            entered.__exit__(None, None, None)

@@ -141,11 +141,12 @@ class _Provider(Generic[T]):
     ) -> None:
         token, self._token = self._token, None
         if token is not None:
+            orphaned = False
             try:
                 _registry.reset(token)
-            except ValueError:
+            except (ValueError, RuntimeError):
                 # The context the token belongs to is not the one exiting, so nothing to undo here.
-                self._warn_orphaned()
+                orphaned = True
             # Gated on what enter recorded, not on a switch a thread can flip.
             block, self._block = self._block, None
             if block is not None:
@@ -153,21 +154,29 @@ class _Provider(Generic[T]):
             # After the reset, since restoring the scope must not depend on a user's repr.
             if exc is not None:
                 _annotate(exc, self._key, self._noted(), annotate=self._annotate)
+            # Last, since a filter making the warning an error would otherwise skip all of it.
+            if orphaned:
+                self._warn_orphaned(displacing=exc is not None)
 
-    def _warn_orphaned(self) -> None:
+    def _warn_orphaned(self, *, displacing: bool) -> None:
         """Report a block whose value outlives it."""
         name = _describe_key(self._key)
         # The ledger's frame walk, so the warning names the user's line and not this unwind.
         levels = _user_site()[1]
-        warnings.warn(
-            f"nodrill: the provider for {name} exited in a different context than it "
-            f"opened in, so its value stays visible to whoever opened it. An async "
-            f"generator holding the block and abandoned without contextlib.aclosing() "
-            f"does this. Wrap the iteration in aclosing(), or move the block out of "
-            f"the generator.",
-            OrphanedProviderWarning,
-            stacklevel=levels,
+        message = (
+            f"nodrill: the provider for {name} is closing from a context it did not "
+            f"open in, so the block cannot unwind and its value stays in the context "
+            f"that holds it. An async generator abandoned without contextlib.aclosing() "
+            f"is the usual cause, and an ExitStack entered and closed in different tasks "
+            f"or a block entered on one thread and exited on another do the same. "
+            f"Close the block in the context that opened it."
         )
+        try:
+            warnings.warn(message, OrphanedProviderWarning, stacklevel=levels)
+        except Warning:
+            # A filter chose the error, and the failure on its way out is still worth more.
+            if not displacing:
+                raise
 
     def _noted(self) -> Any:
         """Return what a note describes, which is what this block itself provided."""
@@ -546,8 +555,9 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
     if default is not _MISSING:
         return default
     # The resolved target, since that is what a provider registered under.
-    diagnosis = _diagnose(target) if _debug_state.recording else None
-    raise NoProviderError(key, _registry.get().keys(), diagnosis)
+    recording = _debug_state.recording
+    diagnosis = _diagnose(target) if recording else None
+    raise NoProviderError(key, _registry.get().keys(), diagnosis, offer_debug=not recording)
 
 
 def active() -> Mapping[str | type[Any], Any]:
