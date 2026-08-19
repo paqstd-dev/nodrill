@@ -5,18 +5,19 @@ so a value captured by a closure, a callback or a background task says so at
 the moment it is touched rather than failing later somewhere else.
 
 The liveness check sits in front of the delegation in every generated method,
-which is why the protocol tables in _frozen are the coverage guarantee here
-as they are there.  Freezing decides what a consumer may do and sealing
-decides when, so the two compose by nesting rather than by growing flags on
-one class, and the seal is the outer one.
+which is why the protocol tables in _views are the coverage guarantee here as
+they are for the other two views.  Freezing decides what a consumer may do and
+sealing decides when, so the two compose by nesting rather than by growing
+flags on one class, and the seal is the outer one.
 
-The generators are written again rather than shared with _frozen, because
-each one needs the operation's own name to report and a check in front of the
-delegation, so what would be shared is the one line that differs.
+The generators are written again rather than shared with the other views,
+because each one needs the operation's own name to report and a check in front
+of the delegation, so what would be shared is the one line that differs.
 
 An in-place operator has a generator of its own, since operator.iadd hands
 back the target and the caller's name would be rebound to the value the seal
-was covering.
+was covering.  The lazy cell has the same generator for the same reason, or a
+seal over one would be rebound to the resolved value instead.
 
 __class__, __repr__ and __dir__ are the three members that answer after
 expiry, none of which hands back the target, since a debugging session that

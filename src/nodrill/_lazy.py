@@ -11,7 +11,7 @@ keeps and the read-only one its callees get.
 
 Special methods are looked up on the type, never through __getattr__, so every
 protocol a view resolves through has to exist on the class.  The tables in
-_frozen describe the same protocols and are reused verbatim.  The three
+_views describe the same protocols and are reused verbatim.  The four
 generators are written again rather than shared, because a shared one would
 have to reach its target through a passed-in accessor, and that is a call
 added to every operation on both proxies.
@@ -238,6 +238,16 @@ def _make_forward(op: Callable[..., Any]) -> Callable[..., Any]:
     return method
 
 
+def _make_inplace(op: Callable[[Any, Any], Any]) -> Callable[..., Any]:
+    def method(self: _LazyCell, other: Any) -> Any:
+        view = self._nodrill_resolve()
+        result = op(view, other)
+        # This cell again where the value mutated itself, so `x += y` cannot unwrap it.
+        return self if result is view else result
+
+    return method
+
+
 def _make_reflected(op: Callable[[Any, Any], Any]) -> Callable[..., Any]:
     def method(self: _LazyCell, other: Any) -> Any:
         return op(other, self._nodrill_resolve())
@@ -252,8 +262,10 @@ def _make_invoked(name: str) -> Callable[..., Any]:
     return method
 
 
-for _name, _op in {**_FORWARDED, **_ITEM_WRITES, **_INPLACE}.items():
+for _name, _op in {**_FORWARDED, **_ITEM_WRITES}.items():
     setattr(_LazyCell, _name, _make_forward(_op))
+for _name, _op in _INPLACE.items():
+    setattr(_LazyCell, _name, _make_inplace(_op))
 for _name, _op in _REFLECTED.items():
     setattr(_LazyCell, _name, _make_reflected(_op))
 for _name in _INVOKED:

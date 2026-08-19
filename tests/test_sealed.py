@@ -297,6 +297,26 @@ class TestEscapesAcrossBoundaries:
         with pytest.raises(ExpiredScopeError):
             read(session)
 
+    def test_re_providing_the_yielded_value_registers_its_own_key(
+        self, in_thread: ThreadRunner
+    ) -> None:
+        with provider(Session(), sealed=True) as session:
+
+            def query_it() -> str:
+                # The pattern the concurrency page prescribes, on a thread that starts empty.
+                with provider(session):
+                    text: str = use(Session).query()
+                    return text
+
+            assert in_thread(query_it) == "rows from pg://"
+
+    def test_a_re_provided_value_expires_with_the_block_it_came_from(self) -> None:
+        with provider(Session(), sealed=True) as session:
+            pass
+        with provider(session):
+            with pytest.raises(ExpiredScopeError):
+                read(use(Session))
+
     async def test_a_task_that_finishes_inside_the_block_is_unaffected(self) -> None:
         async def child() -> str:
             text: str = use(Session).query()
@@ -371,6 +391,16 @@ class TestComposition:
             assert cell.dsn == "pg://"
         with pytest.raises(ExpiredScopeError):
             read(cell)
+
+    def test_an_in_place_operator_on_a_lazy_value_keeps_the_seal(self) -> None:
+        shared = [1]
+        with provider(lazy(list, lambda: shared), sealed=True) as items:
+            items += [2]
+            assert use(list) == [1, 2]
+        # The cell hands itself back, so the operator cannot rebind the name past the seal.
+        with pytest.raises(ExpiredScopeError):
+            items.append(3)
+        assert shared == [1, 2]
 
     def test_lazy_and_frozen_and_sealed_together(self) -> None:
         with provider(lazy(Session, Session), frozen=True, sealed=True) as cell:

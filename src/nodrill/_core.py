@@ -22,6 +22,7 @@ from ._lazy import _is_lazy, _Lazy, _LazyCell, _Resolution
 from ._refs import _is_ref, _key_target, _restore, _snapshot
 from ._report import _annotate
 from ._sealed import _Scope, _sealed_views
+from ._views import _unwrapped
 
 T = TypeVar("T")
 D = TypeVar("D")
@@ -459,7 +460,8 @@ def _instance_key(target: Any, key: Any) -> str | type[Any]:
             f"register under: pass the value, as provider(instance, key={target!r})"
         )
     if key is None:
-        return type(target)
+        # Through any view, or re-providing what a sealed block yielded registers _SealedProxy.
+        return type(_unwrapped(target))
     key = _key_target(key)
     if isinstance(key, _KEY_TYPES):
         return key

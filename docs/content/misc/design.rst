@@ -188,6 +188,7 @@ A failing factory has its exception cached, because a failure that depends on wh
 ``repr`` is the one operation that does not resolve, because ``active()`` is printed exactly when something has already gone wrong.
 
 Unlike the frozen proxy, the cell forwards writes, item assignment and the in-place operators, because a lazy value that is not also frozen has to behave as the value would, and an absent ``__iadd__`` would silently rebind the caller's name instead of extending the provided list.
+Those operators hand the cell back when the operation mutated the built value in place, so a seal nesting over the cell is not rebound away by ``items += [x]``.
 
 ``frozen=True`` composes by splitting the views rather than by stacking a second proxy, so the block holds a plain cell and the registry a freezing one over the same build.
 Wrapping inside the build would have handed the block a read-only handle, which is the half of the frozen contract that exists so the owner keeps writing.
