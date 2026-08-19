@@ -10,6 +10,7 @@ from nodrill import (
     EnvelopeVersionError,
     ExpiredScopeError,
     KeyResolutionError,
+    Namespace,
     NoProviderError,
     provider,
     set_default,
@@ -233,3 +234,24 @@ class TestTheHintCanBeFollowed:
         message = str(raised.value)
         assert "provider(instance, key=Store)" in message
         assert "provider(Store(...))" not in message
+
+
+class TestAFlagCannotCarryData:
+    """A flag name that reads as an attribute would eat the value and turn itself on."""
+
+    @pytest.mark.parametrize(
+        ("flag", "value"),
+        [("extend", "v1"), ("sealed", 1200), ("frozen", "yes")],
+        ids=["extend", "sealed", "frozen"],
+    )
+    def test_a_non_bool_flag_is_refused(self, flag: str, value: object) -> None:
+        with pytest.raises(TypeError) as raised:
+            # A flag carrying data is what the checkers refuse and the call has to reach.
+            provider("plan", tier="pro", **{flag: value})  # type: ignore[call-overload]
+        message = str(raised.value)
+        assert f"provider({flag}=...) is a flag and cannot carry data" in message
+        assert "Namespace(" in message
+
+    def test_the_escape_hatch_keeps_the_attribute(self) -> None:
+        with provider(Namespace(extend="v1", tier="pro"), key="plan"):
+            assert use("plan").extend == "v1"

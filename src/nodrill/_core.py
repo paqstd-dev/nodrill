@@ -392,6 +392,22 @@ class _SealedExtendingProvider(_Sealing, _ExtendingProvider):
     __slots__ = ()
 
 
+def _flags_are_flags(**flags: Any) -> None:
+    """Refuse a flag carrying data, which would otherwise eat a namespace attribute.
+
+    provider("plan", extend="v1") reads as an attribute and binds the
+    parameter, so the value disappears and the feature turns itself on.
+    """
+    for name, value in flags.items():
+        if value is not True and value is not False:
+            raise TypeError(
+                f"provider({name}=...) is a flag and cannot carry data, and "
+                f"{value!r} would turn it on as well as vanish. For a namespace "
+                f"attribute of that name write "
+                f"provider(Namespace({name}={value!r}, ...), key=<the name>)"
+            )
+
+
 @overload
 def provider(
     name: str,
@@ -451,6 +467,7 @@ def provider(
     once the block has exited, so a value captured by a closure or a
     background task reports the escape where it happens.
     """
+    _flags_are_flags(frozen=frozen, extend=extend, sealed=sealed)
     target = _target_of(args, values)
     if isinstance(target, str):
         if key is not None:
