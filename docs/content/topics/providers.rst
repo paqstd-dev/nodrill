@@ -81,6 +81,7 @@ Three consequences follow, and all three are the point.
 Exit is unconditional.
    The value is removed whether the block finished or raised.
    There is no cleanup to remember and no state to leak into the next request.
+   The one shape that does not hold is a block closed from a context it did not open in, which cannot unwind and reports itself with :exc:`~nodrill.OrphanedProviderWarning`.
 
 Same-key providers nest.
    An inner block shadows the outer value for its duration, and the outer value is restored on exit.
@@ -357,7 +358,9 @@ This is the one place where sealing and freezing are not symmetric.
 While the block is open the value behaves as itself, ``use(Session) is session`` holds as it does for an ordinary provider, and ``isinstance`` answers as it always did.
 
 The one thing to know is that the block now holds a view rather than the object, which the interpreter can tell apart even though your code cannot.
-A C-level check of the concrete type sees the view, so ``json.dumps`` on a sealed ``dict``, ``open()`` on a sealed :class:`~pathlib.Path` and :class:`weakref.ref` on a sealed object all refuse, inside the block, where ``frozen=True`` would not.
+A C-level check of the concrete type sees the view, so ``json.dumps`` on a sealed ``dict``, ``open()`` on a sealed :class:`~pathlib.Path` and :class:`weakref.ref` on a sealed object all refuse.
+Every view is like this, ``frozen=True`` and :func:`~nodrill.lazy` included, and what ``frozen=True`` changes is only who meets it, since the block keeps the raw object and a consumer reading through :func:`~nodrill.use` holds the view.
+The same applies to :func:`dataclasses.asdict`, :func:`dataclasses.replace` and :func:`dataclasses.is_dataclass`, which read ``type()`` and so do not see a dataclass, while :func:`dataclasses.fields` reads the instance and works.
 Seal the objects your own code reads and pass the raw value where a C-level API is going to inspect it.
 
 A second entry does not revive the first

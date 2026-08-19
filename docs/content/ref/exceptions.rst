@@ -216,10 +216,12 @@ OrphanedProviderWarning
 
    Bases: :exc:`UserWarning`
 
-   Warned when a provider block exits in a different context than the one it opened in, so the value it provided stays visible to whoever opened it.
+   Warned when a provider block is closed from a context it did not open in, so the block cannot unwind and its value is never taken back out of the context that holds it.
 
-   An async generator holding the block and abandoned without closing it is the way this happens, since asyncio finalizes it through a task of its own and a token cannot be reset from a context it was not created in.
-   The generator body ran in the caller's context, which is where the value was left, and that context is still live.
+   A token cannot be reset from a context it was not created in, which is the mechanism under every case.
+   An abandoned async generator is the usual one, since asyncio finalizes it through a task of its own.
+   An :class:`~contextlib.ExitStack` entered and closed in different tasks does the same, as does a block entered on one thread and exited on another, and a sync generator collected somewhere other than where it ran.
+   Where the value ends up depends on which context opened the block, so a generator leaves it in the caller's, which is live, while a context nobody holds any more takes it away with itself.
 
    .. code-block:: python
 
@@ -234,10 +236,11 @@ OrphanedProviderWarning
                   break
 
    :func:`contextlib.aclosing` closes the generator where it was iterated, which is the context the block belongs to, so the reset lands and the warning does not fire.
+   :func:`contextlib.closing` is the sync spelling.
    The fix is the caller's to apply, since only the caller knows when the iteration stops early.
    The alternative is to keep the block out of the generator and open it around the loop.
 
-   The warning names the line the block was opened at, and it is a category of its own so it can be silenced by kind.
+   The warning points at the frame the block is closing in, which for an abandoned generator is the ``async with`` line itself, and it is a category of its own so it can be silenced by kind.
 
    .. code-block:: python
 
