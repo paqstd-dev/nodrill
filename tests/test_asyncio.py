@@ -47,9 +47,9 @@ class TestTaskIsolation:
 
         async def worker(name: str) -> str:
             with provider(Tenant(name=name)):
-                await asyncio.sleep(0.01)  # interleave with the sibling
+                await asyncio.sleep(0)  # yield once, so the sibling runs in between
                 checkpoints.append(f"{name}={use(Tenant).name}")
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0)
                 seen: str = use(Tenant).name
                 return seen
 

@@ -307,7 +307,8 @@ class _WrapperSpace:
 
     def __init__(self, prefix: str) -> None:
         self.prefix = prefix
-        self.space: dict[str, Any] = {}
+        # Named, so a stack walk reads the wrapper as this package rather than as user code.
+        self.space: dict[str, Any] = {"__name__": __name__}
         self._transient: list[str] = []
 
     def __getattr__(self, suffix: str) -> str:

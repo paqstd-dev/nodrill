@@ -90,6 +90,13 @@ class TestFrozenClassKeyed:
             with pytest.raises(TypeError, match="cannot be pickled or copied"):
                 operation(use(Config))
 
+    def test_re_providing_a_frozen_view_registers_its_own_key(self) -> None:
+        with provider(Config(), frozen=True):
+            view = use(Config)
+        # The class the view stands for, never the private one underneath it.
+        with provider(view):
+            assert use(Config) is view
+
     def test_raw_instance_is_never_frozen(self) -> None:
         cfg = Config()
         with provider(cfg, frozen=True):

@@ -8,6 +8,7 @@ import pytest
 
 from nodrill import (
     EnvelopeVersionError,
+    ExpiredScopeError,
     KeyResolutionError,
     NoProviderError,
     provider,
@@ -108,8 +109,11 @@ class TestErrorsSurviveATrip:
             lambda: NoProviderError("database"),
             lambda: KeyResolutionError("myapp.context:Scope", "no such attribute"),
             lambda: EnvelopeVersionError(2, 1),
+            lambda: ExpiredScopeError(
+                "app", "query", opened=("a.py", 1), exited=("a.py", 1), used=("b.py", 9)
+            ),
         ],
-        ids=["no-provider", "key-resolution", "envelope-version"],
+        ids=["no-provider", "key-resolution", "envelope-version", "expired-scope"],
     )
     def test_an_error_carries_its_notes_across(self, make: Callable[[], Exception]) -> None:
         """The scope annotate_exceptions() attached in the worker is why the trip is taken."""

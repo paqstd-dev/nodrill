@@ -292,7 +292,14 @@ class TestRefusedValues:
         """Naming it a dict would list its own type among the portable ones and refuse it anyway."""
         with provider({"region": "eu"}, key="raw", frozen=True):
             with provider("trace", meta=use("raw")):
-                with pytest.raises(TypeError, match="meta is a read-only view of a dict"):
+                with pytest.raises(TypeError, match="meta is a view of a dict"):
+                    export("trace")
+
+    def test_a_sealed_view_of_a_container_says_the_same(self) -> None:
+        """Sealing is not read-only, so the refusal names the view rather than what it allows."""
+        with provider({"region": "eu"}, key="raw", sealed=True):
+            with provider("trace", meta=use("raw")):
+                with pytest.raises(TypeError, match="meta is a view of a dict"):
                     export("trace")
 
     def test_the_path_names_a_list_element(self) -> None:

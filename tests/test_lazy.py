@@ -285,6 +285,16 @@ class TestBehavesLikeTheValue:
             assert held.tag == "?"
             assert held.__class__ is Config
 
+    def test_re_providing_the_cell_registers_the_key_class(self) -> None:
+        factory = Counter()
+        with provider(lazy(Config, factory)):
+            held = use(Config)
+            with provider(held):
+                assert list(active()) == [Config]
+                assert use(Config) is held
+            # The class the cell promised, and reading nothing that would build it.
+            assert factory.calls == 0
+
     def test_repr_does_not_resolve(self) -> None:
         factory = Counter()
         with provider(lazy(Config, factory)):
@@ -402,9 +412,17 @@ class TestProtocols:
         with provider(lazy(list, lambda: shared)):
             held: Any = use(list)
             held += ["second"]
-            # The operator hands back the value itself, so the rebound name is the real list.
-            assert held is shared
+            # The cell again rather than the list, so a seal over it survives the rebinding.
+            assert held is use(list)
         assert shared == ["first", "second"]
+
+    def test_an_immutable_value_rebinds_to_the_result(self) -> None:
+        with provider(lazy(int, lambda: 7)):
+            total: Any = use(int)
+            total += 1
+        # A new object, which the cell never stood for.
+        assert total == 8
+        assert type(total) is int
 
     def test_first_touch_through_a_protocol_resolves(self) -> None:
         factory = Counter()

@@ -99,7 +99,7 @@ class TestAmbientIsolation:
     async def test_sibling_tasks_do_not_share_writes(self) -> None:
         async def sibling(name: str) -> bool:
             context.owner = name
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0)
             saw_own: bool = context.owner == name
             return saw_own
 

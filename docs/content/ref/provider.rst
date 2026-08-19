@@ -10,9 +10,9 @@ The core of the library, opening a scope, deferring what it costs to fill, readi
 provider
 --------
 
-.. function:: provider(name, /, *, frozen=False, extend=False, annotate=None, **values)
-               provider(instance, /, *, key=None, frozen=False, annotate=None)
-               provider(*, name, frozen=False, extend=False, annotate=None, **values)
+.. function:: provider(name, /, *, frozen=False, extend=False, annotate=None, sealed=False, **values)
+               provider(instance, /, *, key=None, frozen=False, annotate=None, sealed=False)
+               provider(*, name, frozen=False, extend=False, annotate=None, sealed=False, **values)
 
    Make a value available to the whole call subtree through :func:`use`.
    Returns a context manager, and the value is registered on entry and removed on exit, whether the block completes or raises.
@@ -33,6 +33,8 @@ provider
       ``None``, the default, follows :func:`annotate_exceptions`, while ``True`` and ``False`` decide for this block whatever the process-wide switch says.
       ``False`` is how a layer holding a credential stays out of a traceback, and the note format is covered under :func:`annotate_exceptions`.
       Exception notes are Python 3.11 and up, so on 3.10 ``annotate=True`` attaches nothing, and the warning that says so is on :func:`annotate_exceptions` rather than here.
+   :param sealed: When true, the block and its consumers both get a view that stops working once the block has exited, so a value captured by a closure or a background task raises :exc:`ExpiredScopeError` where it is touched.
+      See :ref:`sealed-scopes` below.
    :raises TypeError: More than one positional argument, no target at all, a class or a :func:`ref` rather than an instance, keyword values with an instance target, a non-string ``name=``, a ``key=`` that is neither a string nor a class, a ``key=`` beside a :func:`lazy` target, which already names its own key, or ``extend=True`` on anything but a string name.
       On entry, ``extend=True`` over a name that holds something other than a :class:`Namespace`.
    :raises RuntimeError: On entering a provider object that is already active.
@@ -48,7 +50,7 @@ provider
 
    The ``name=`` keyword is the key only when no positional target is given.
    With a positional target it is ordinary data, so ``provider("doc", name="report.pdf")`` sets an attribute called ``name``.
-   ``frozen``, ``key``, ``extend`` and ``annotate`` are the four names that cannot be prefilled this way, since they are the function's own parameters.
+   ``frozen``, ``key``, ``extend``, ``annotate`` and ``sealed`` are the five names that cannot be prefilled this way, since they are the function's own parameters.
 
    The returned object may be entered again after it exits, but not while it is active.
 
@@ -101,6 +103,67 @@ A mutable object reached *through* the target is still mutable::
 
 ``type(proxy)`` still reports the proxy class.
 This is a guard rail against accidental writes, not a security boundary.
+
+.. _sealed-scopes:
+
+Sealed scopes
+~~~~~~~~~~~~~
+
+A provided value can outlive its block.
+A closure captures it, a callback keeps it, a background task reads it after the request is over, and the session it names has been closed or handed back to a pool.
+Nothing raises at the moment of the mistake, and something fails later, somewhere else, with a message about a closed connection or with quietly wrong data.
+
+With ``sealed=True`` the value stops working when the block exits.
+
+.. code-block:: python
+
+   from nodrill import ExpiredScopeError, provider
+
+   with provider(Session(dsn), sealed=True) as session:
+       handler(session)
+
+   session.query("select 1")           # ExpiredScopeError
+
+The error names the line the block opened at and the line the value was touched from, because the frame that raises is never the frame that made the mistake.
+Where the block exited is recorded as well and printed only when it differs, which a ``with`` statement's own exit never does.
+
+.. code-block:: text
+
+   ExpiredScopeError: Session.query was used after its provider block exited.
+     opened at web.py:42
+     used here at worker.py:88
+
+Unlike ``frozen=True``, the seal covers the object the block yields as well as the view :func:`use` hands out.
+That asymmetry is deliberate.
+A frozen block keeps a writable handle because the owner has to write, while the closure that captures a value captures exactly what the ``with`` statement yielded, and that is the case this feature exists for.
+While the block is open the two are the same object, so ``use(key) is session`` holds as it does for an ordinary provider, and they are two only under ``frozen=True``.
+
+Re-entering the provider does not revive anything.
+Each entry mints its own seal, so a reference held from an earlier entry stays dead, since a reference that came back to life would be a worse bug than the one being reported.
+
+It composes with the other two flags, and the seal is the outer one.
+An expired write reports the expiry rather than the freeze, an expired read of a :func:`lazy` value raises without running the factory, and ``isinstance`` holds through either combination.
+
+.. code-block:: python
+
+   with provider(lazy(Session, connect), frozen=True, sealed=True) as session:
+       session.dsn = "the owner can still write"
+
+Three operations answer after expiry, and none of them hands back the target.
+``isinstance`` keeps working, since a check inside an ``except`` clause must not itself raise, while ``repr`` describes the expiry rather than blowing up and ``dir`` still lists the names.
+
+.. code-block:: python
+
+   repr(session)                       # '<expired Session, opened at web.py:42, exited at web.py:47>'
+
+Everything else raises, including ``hasattr`` and a ``getattr`` given a default, since :exc:`ExpiredScopeError` is deliberately not an :exc:`AttributeError` and a guard that answered quietly would hide the escape.
+Pickling and copying raise :exc:`TypeError`, live or expired, rather than handing back an unsealed duplicate.
+
+A sealed value crosses into a thread or a task with the context, and expires there when the block exits in the parent, which is a report that can land on work that is still legitimately running.
+:doc:`/content/topics/concurrency` covers that case.
+
+This is a guard rail, in exactly the sense ``frozen=True`` is one, and it has the same shallowness.
+The limits, and the escape routes it does not close, are listed under :ref:`topics-providers-sealed`.
 
 .. _extending-providers:
 

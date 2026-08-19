@@ -153,6 +153,15 @@
         </p>
       </article>
       <article class="nd-rest-card">
+        <h3><code>sealed=True</code></h3>
+        <p>
+          A value captured by a closure or a background task stops working
+          when its block exits, and says so where it is touched, naming the
+          line the block opened and the line that used it.
+        </p>
+        <p class="nd-rest-code">ExpiredScopeError: Session.query was used after its provider block exited. opened at web.py:42, used here at worker.py:88</p>
+      </article>
+      <article class="nd-rest-card">
         <h3><code>set_default</code></h3>
         <p>
           Declare the fallback for a class once, and code that also has to run

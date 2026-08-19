@@ -50,6 +50,7 @@ A key is a class or a string, and `use(Config)` is inferred as `Config` under bo
 How the value is handed out is the provider's decision.
 `lazy(Cls, factory)` builds it on the first read, and not at all without one.
 `frozen=True` gives consumers a read-only view while the block keeps writing, and `extend=True` lets a scope accumulate as the call descends, one layer per block, each unwound on exit.
+`sealed=True` makes a value that escaped its block say so where it is touched, naming the line the block opened and the line that used it, instead of failing later as a closed connection.
 
 Reading it is `use()` anywhere below, or `@inject` to put the dependency in the signature where a test can still pass it explicitly.
 Tasks inherit the context, `wrap` and `Executor` carry it into threads, and `set_default(Config, factory)` answers a read that ran outside every provider.
@@ -63,7 +64,7 @@ Everything above is importable from the top-level package, and there is nothing 
 
 A lookup is one dict read on a single `ContextVar`, and nothing is constructed, resolved or cached along the way.
 Reading through `use()` costs a little over the parameter it replaces, and `@inject` a little more than that, because it fills the argument before the body runs.
-`frozen=True` and `lazy` add a proxy hop to every attribute the consumer touches, and a `ref()` key pays a Python-level hash where a class hashes in C.
+`frozen=True`, `lazy` and `sealed=True` add a proxy hop to every attribute the consumer touches, and a `ref()` key pays a Python-level hash where a class hashes in C.
 A request that reads a provided value a hundred times spends microseconds in nodrill, against hundreds of microseconds for one round trip to a database.
 
 Entering a provider is the expensive end, because it copies the registry so that sibling tasks stay isolated.

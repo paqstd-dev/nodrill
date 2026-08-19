@@ -27,7 +27,7 @@ from ._errors import UnusedProviderWarning, _describe_key, _Key
 _Registry = dict[_Key, Any]
 
 # Skipped when naming a site, so an ExitStack or _LazyProvider entry names the user's line.
-_RELAYS = (f"{__name__.rpartition('.')[0]}.", "contextlib")
+_RELAYS = (f"{__name__.rpartition('.')[0]}.", "contextlib.")
 
 # Bounded, since an entry names a key and a class key would otherwise be pinned.
 _CLOSED_LIMIT = 256
@@ -78,7 +78,11 @@ class _Block(NamedTuple):
 
 
 class _State:
-    """The debug switches, in one object so no function needs a global statement."""
+    """The debug switches, in one object so no function needs a global statement.
+
+    recording and counting mirror the two depths rather than being read off
+    them, since the provider path tests one of them on every block entered.
+    """
 
     __slots__ = ("counting", "depth", "recording", "seq", "unused_depth")
 
@@ -157,7 +161,11 @@ def _user_site() -> tuple[_Site, int]:
     """
     frame = inspect.currentframe()
     levels = 0
-    while frame is not None and frame.f_globals.get("__name__", "").startswith(_RELAYS):
+    # Named exactly or dotted, so the prefix cannot swallow a user's contextlib_ext.
+    while frame is not None and (
+        (module := frame.f_globals.get("__name__", "")).startswith(_RELAYS)
+        or module == "contextlib"
+    ):
         frame = frame.f_back
         levels += 1
     # None only where the implementation has no frames at all.

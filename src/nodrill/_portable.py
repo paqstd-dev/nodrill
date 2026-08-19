@@ -337,11 +337,11 @@ def _remedy(where: str) -> str:
 
 def _refused(where: str, path: str, value: Any) -> TypeError:
     """Return the refusal for a value that cannot travel, naming the nearest repair."""
-    # Decided by type() and named by __class__, so a frozen value reports what it wraps.
+    # Decided by type() and named by __class__, so a proxied value reports what it wraps.
     named = value.__class__
     if named is dict or named is list or named in _SCALARS:
         return TypeError(
-            f"{where}: {path} is a read-only view of a {named.__name__}, and a view does "
+            f"{where}: {path} is a view of a {named.__name__}, and a view does "
             f"not travel. Export what it wraps"
         )
     for base in (str, int, float, list, dict):
