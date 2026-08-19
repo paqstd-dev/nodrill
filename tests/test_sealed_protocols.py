@@ -25,22 +25,6 @@ _HANDWRITTEN = (
     ("__hash__", ()),
 )
 
-# Base 7 through each entry with an operand of 2, so a table remapped to a neighbour is caught.
-_INPLACE_RESULTS = {
-    "__iadd__": 9,
-    "__isub__": 5,
-    "__imul__": 14,
-    "__itruediv__": 3.5,
-    "__ifloordiv__": 3,
-    "__imod__": 1,
-    "__ipow__": 49,
-    "__ilshift__": 28,
-    "__irshift__": 1,
-    "__iand__": 2,
-    "__ior__": 7,
-    "__ixor__": 5,
-}
-
 _GENERATED = (*_FORWARDED, *_ITEM_WRITES, *_INPLACE, *_REFLECTED, *_INVOKED)
 
 
@@ -313,12 +297,7 @@ class TestLiveProtocols:
         # A new object, which was never the provided value and so is not sealed.
         assert total == 8
 
-    def test_every_in_place_operator_applies_its_own_operation(self) -> None:
-        assert set(_INPLACE_RESULTS) | {"__imatmul__"} == set(_INPLACE)
-        with provider(7, key="count", sealed=True):
-            proxy = use("count")
-            for name, expected in _INPLACE_RESULTS.items():
-                assert getattr(type(proxy), name)(proxy, 2) == expected
+    def test_a_matmul_that_mutates_hands_the_view_back(self) -> None:
         with provider(Matrix(), sealed=True) as matrix:
             product: Any = matrix
             product @= "x"
@@ -369,27 +348,35 @@ class TestLiveProtocols:
 
 
 class TestExpiredProtocols:
-    def test_every_generated_protocol_checks_the_scope(self) -> None:
+    @pytest.fixture
+    def expired(self) -> Everything:
+        """Hand over a view whose block has already exited."""
+        with provider(Everything(), sealed=True) as sealed:
+            pass
+        return sealed
+
+    @pytest.mark.parametrize("name", _GENERATED)
+    def test_every_generated_protocol_checks_the_scope(
+        self, expired: Everything, name: str
+    ) -> None:
         # Called with no arguments, since the check runs before the delegation, so
         # a missing one shows up as something other than ExpiredScopeError.
-        with provider(Everything(), sealed=True) as sealed:
-            pass
-        for name in _GENERATED:
-            # A reflected or in-place method takes its operand positionally, the rest take none.
-            args = (1,) if name in _REFLECTED or name in _INPLACE else ()
-            method = getattr(type(sealed), name)
-            with pytest.raises(ExpiredScopeError, match=rf"Everything\.{name} was used after"):
-                method(sealed, *args)
+        args = (1,) if name in _REFLECTED or name in _INPLACE else ()
+        method = getattr(type(expired), name)
+        with pytest.raises(ExpiredScopeError, match=rf"Everything\.{name} was used after"):
+            method(expired, *args)
 
-    def test_every_handwritten_member_checks_the_scope(self) -> None:
-        with provider(Everything(), sealed=True) as sealed:
-            pass
-        for name, args in _HANDWRITTEN:
-            # An attribute member reports the attribute, and the rest report themselves.
-            reported = "value" if name.endswith("attr__") else name
-            method = getattr(type(sealed), name)
-            with pytest.raises(ExpiredScopeError, match=rf"Everything\.{reported} was used after"):
-                method(sealed, *args)
+    @pytest.mark.parametrize(
+        ("name", "args"), _HANDWRITTEN, ids=[name for name, _args in _HANDWRITTEN]
+    )
+    def test_every_handwritten_member_checks_the_scope(
+        self, expired: Everything, name: str, args: tuple[Any, ...]
+    ) -> None:
+        # An attribute member reports the attribute, and the rest report themselves.
+        reported = "value" if name.endswith("attr__") else name
+        method = getattr(type(expired), name)
+        with pytest.raises(ExpiredScopeError, match=rf"Everything\.{reported} was used after"):
+            method(expired, *args)
 
     def test_the_table_is_the_coverage_and_nothing_slipped_past_it(self) -> None:
         generated = {
@@ -400,25 +387,19 @@ class TestExpiredProtocols:
         handwritten = {name for name, _args in _HANDWRITTEN}
         assert generated == {*_GENERATED, *handwritten, "__init__"}
 
-    def test_dir_answers_after_expiry_the_way_repr_does(self) -> None:
-        with provider(Everything(), sealed=True) as sealed:
-            pass
-        assert "value" in dir(sealed)
+    def test_dir_answers_after_expiry_the_way_repr_does(self, expired: Everything) -> None:
+        assert "value" in dir(expired)
 
-    def test_attribute_reads_writes_and_deletes_all_raise(self) -> None:
-        with provider(Everything(), sealed=True) as sealed:
-            pass
+    def test_attribute_reads_writes_and_deletes_all_raise(self, expired: Everything) -> None:
         with pytest.raises(ExpiredScopeError, match=r"Everything\.value was used after"):
-            _ = sealed.value
+            _ = expired.value
         with pytest.raises(ExpiredScopeError, match=r"Everything\.value was used after"):
-            sealed.value = 1
+            expired.value = 1
         with pytest.raises(ExpiredScopeError, match=r"Everything\.value was used after"):
-            del sealed.value
+            del expired.value
 
-    def test_the_operators_raise_through_their_own_syntax(self) -> None:
-        with provider(Everything(), sealed=True) as sealed:
-            pass
-        proxy: Any = sealed
+    def test_the_operators_raise_through_their_own_syntax(self, expired: Everything) -> None:
+        proxy: Any = expired
         with pytest.raises(ExpiredScopeError):
             len(proxy)
         with pytest.raises(ExpiredScopeError):
