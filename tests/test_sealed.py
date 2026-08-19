@@ -156,7 +156,9 @@ class TestProviderKinds:
 
         every = kinds(_Provider)
         sealed = {kind for kind in every if issubclass(kind, _Sealing)}
-        assert {kind.__bases__[1] for kind in sealed} == (every - sealed) | {_Provider}
+        # A base that only shares an implementation is never opened, so it needs no twin.
+        shared = {base for kind in every - sealed for base in kind.__bases__} - {_Provider}
+        assert {kind.__bases__[1] for kind in sealed} == (every - sealed - shared) | {_Provider}
 
 
 class TestGuardsAndCopies:

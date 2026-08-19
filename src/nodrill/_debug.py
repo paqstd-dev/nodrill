@@ -78,7 +78,11 @@ class _Block(NamedTuple):
 
 
 class _State:
-    """The debug switches, in one object so no function needs a global statement."""
+    """The debug switches, in one object so no function needs a global statement.
+
+    recording and counting mirror the two depths rather than being read off
+    them, since the provider path tests one of them on every block entered.
+    """
 
     __slots__ = ("counting", "depth", "recording", "seq", "unused_depth")
 

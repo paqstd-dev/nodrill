@@ -166,7 +166,30 @@ class _Provider(Generic[T]):
         self.__exit__(exc_type, exc, tb)
 
 
-class _LazyProvider(_Provider[Any]):
+class _PerEntryProvider(_Provider[Any]):
+    """Base of the providers that mint their value on entry rather than at the call.
+
+    Clearing on the way out is what keeps one entry's value from outliving
+    the block that built it.  Empty slots, since the value lives in the
+    fields _Provider already has.
+    """
+
+    __slots__ = ()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        try:
+            super().__exit__(exc_type, exc, tb)
+        finally:
+            # In a finally, since a repr raising a BaseException would otherwise pin the value.
+            self._value = self._public = None
+
+
+class _LazyProvider(_PerEntryProvider):
     """Context manager returned by provider() for a lazy() target.
 
     Mints a fresh build per entry, so a reused provider resolves again, and
@@ -193,20 +216,8 @@ class _LazyProvider(_Provider[Any]):
         state.context = copy_context()
         return yielded
 
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> None:
-        try:
-            super().__exit__(exc_type, exc, tb)
-        finally:
-            # In a finally, since a repr raising a BaseException would otherwise pin the build.
-            self._value = self._public = None
 
-
-class _ExtendingProvider(_Provider[Any]):
+class _ExtendingProvider(_PerEntryProvider):
     """Context manager returned by provider() for extend=True.
 
     Mints the merged namespace per entry, so a reused provider object layers
@@ -233,18 +244,6 @@ class _ExtendingProvider(_Provider[Any]):
         # Delegated, so an already-active provider has one error and one wording.
         namespace: Namespace = super().__enter__()
         return namespace
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> None:
-        try:
-            super().__exit__(exc_type, exc, tb)
-        finally:
-            # In a finally, since a repr raising a BaseException would otherwise pin the data.
-            self._value = self._public = None
 
     def _noted(self) -> Namespace:
         """Return this layer alone, since the merged copy holds what an enclosing block provided."""
