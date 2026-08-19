@@ -19,6 +19,7 @@ The whole public surface is the import below, and everything in it comes from th
        KeyResolutionError,
        Namespace,
        NoProviderError,
+       OrphanedProviderWarning,
        UnusedProviderWarning,
        active,
        adopt,

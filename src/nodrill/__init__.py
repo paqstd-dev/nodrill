@@ -15,6 +15,7 @@ from ._errors import (
     FrozenContextError,
     KeyResolutionError,
     NoProviderError,
+    OrphanedProviderWarning,
     UnusedProviderWarning,
 )
 from ._inject import FromCtx, from_ctx, inject, injected
@@ -35,6 +36,7 @@ __all__ = [
     "KeyResolutionError",
     "Namespace",
     "NoProviderError",
+    "OrphanedProviderWarning",
     "UnusedProviderWarning",
     "__version__",
     "active",

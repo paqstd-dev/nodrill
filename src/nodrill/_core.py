@@ -7,16 +7,17 @@ sibling tasks never observe another scope's keys.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar, Token, copy_context
 from types import MappingProxyType, TracebackType
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, overload
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, overload
 
 from ._ambient import _ambient
 from ._debug import _diagnose, _record_enter, _record_exit, _uncounted, _user_site
 from ._debug import _state as _debug_state
-from ._errors import NoProviderError, _describe_key
+from ._errors import NoProviderError, OrphanedProviderWarning, _describe_key
 from ._frozen import _FrozenProxy
 from ._lazy import _is_lazy, _Lazy, _LazyCell, _Resolution
 from ._refs import _is_ref, _key_target, _restore, _snapshot
@@ -74,7 +75,7 @@ class Namespace:
         return NotImplemented
 
     # Value equality on a mutable bag means no hash, as for types.SimpleNamespace.
-    __hash__ = None  # type: ignore[assignment]
+    __hash__: ClassVar[None] = None  # type: ignore[assignment]
 
     def __repr__(self) -> str:
         inner = ", ".join(f"{k}={v!r}" for k, v in sorted(self.__dict__.items()))
@@ -140,7 +141,11 @@ class _Provider(Generic[T]):
     ) -> None:
         token, self._token = self._token, None
         if token is not None:
-            _registry.reset(token)
+            try:
+                _registry.reset(token)
+            except ValueError:
+                # The context the token belongs to is not the one exiting, so nothing to undo here.
+                self._warn_orphaned()
             # Gated on what enter recorded, not on a switch a thread can flip.
             block, self._block = self._block, None
             if block is not None:
@@ -148,6 +153,21 @@ class _Provider(Generic[T]):
             # After the reset, since restoring the scope must not depend on a user's repr.
             if exc is not None:
                 _annotate(exc, self._key, self._noted(), annotate=self._annotate)
+
+    def _warn_orphaned(self) -> None:
+        """Report a block whose value outlives it."""
+        name = _describe_key(self._key)
+        # The ledger's frame walk, so the warning names the user's line and not this unwind.
+        levels = _user_site()[1]
+        warnings.warn(
+            f"nodrill: the provider for {name} exited in a different context than it "
+            f"opened in, so its value stays visible to whoever opened it. An async "
+            f"generator holding the block and abandoned without contextlib.aclosing() "
+            f"does this. Wrap the iteration in aclosing(), or move the block out of "
+            f"the generator.",
+            OrphanedProviderWarning,
+            stacklevel=levels,
+        )
 
     def _noted(self) -> Any:
         """Return what a note describes, which is what this block itself provided."""
