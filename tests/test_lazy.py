@@ -285,6 +285,16 @@ class TestBehavesLikeTheValue:
             assert held.tag == "?"
             assert held.__class__ is Config
 
+    def test_re_providing_the_cell_registers_the_key_class(self) -> None:
+        factory = Counter()
+        with provider(lazy(Config, factory)):
+            held = use(Config)
+            with provider(held):
+                assert list(active()) == [Config]
+                assert use(Config) is held
+            # The class the cell promised, and reading nothing that would build it.
+            assert factory.calls == 0
+
     def test_repr_does_not_resolve(self) -> None:
         factory = Counter()
         with provider(lazy(Config, factory)):

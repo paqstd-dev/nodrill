@@ -23,8 +23,9 @@ The cost is that entering a provider is O(active keys), and registries hold a ha
 Exact-type keys, and key=
 -------------------------
 
-``provider(instance)`` registers under exactly ``type(instance)``, and ``use(SomeClass)`` looks up exactly ``SomeClass``.
+``provider(instance)`` registers under exactly the instance's own class, and ``use(SomeClass)`` looks up exactly ``SomeClass``.
 Registering a ``Sub`` instance does not answer ``use(Base)``.
+A frozen or sealed view and a lazy cell each answer with the class they stand for, so re-providing what a block yielded registers the key the original did rather than a private wrapper class.
 
 Context keys are identities rather than hierarchies, and MRO search would make ``use`` O(mro x registry) and turn "which provider answers ``use(Base)``" into an ordering question the moment two subclasses are active.
 

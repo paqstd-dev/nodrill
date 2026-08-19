@@ -402,6 +402,14 @@ class TestComposition:
             items.append(3)
         assert shared == [1, 2]
 
+    def test_re_providing_a_sealed_lazy_value_registers_the_key_class(self) -> None:
+        with provider(lazy(Session, Session), sealed=True) as cell:
+            with provider(cell):
+                assert list(active()) == [Session]
+                assert use(Session).query() == "rows from pg://"
+        with pytest.raises(ExpiredScopeError):
+            read(cell)
+
     def test_lazy_and_frozen_and_sealed_together(self) -> None:
         with provider(lazy(Session, Session), frozen=True, sealed=True) as cell:
             cell.dsn = "the owner can still write"
