@@ -48,7 +48,7 @@ class NoProviderError(LookupError):
         self.key = key
         self.active_keys: tuple[Any, ...] = tuple(active_keys)
         self.diagnosis = diagnosis
-        # Never when debug mode is already on, which would be advice the reader took.
+        # Never when debug mode is already on, or the hint names what the reader already did.
         self._offer_debug = offer_debug
         super().__init__(self._build_message())
 
@@ -56,7 +56,7 @@ class NoProviderError(LookupError):
         return _reduced(self)
 
     def _subclassing_key(self) -> Any:
-        """Return an active key the wanted one would have answered under MRO search."""
+        """Return an active key that subclasses the wanted one, which exact keys do not answer."""
         if not isinstance(self.key, type):
             return None
         for active in self.active_keys:

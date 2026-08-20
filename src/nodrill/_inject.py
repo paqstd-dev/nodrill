@@ -227,11 +227,6 @@ def _build_plan(
     func: Callable[..., Any], sig: inspect.Signature, from_key: _KeyArg | None
 ) -> _Plan:
     params = list(sig.parameters.values())
-    hints: dict[str, Any] = {}
-    if any(p.annotation is not inspect.Parameter.empty for p in params):
-        # May raise NameError on unresolved forward refs.
-        hints = get_type_hints(func, include_extras=True)
-
     for param in params:
         if isinstance(param.default, _FromCtxMarker):
             raise TypeError(
@@ -241,6 +236,11 @@ def _build_plan(
                 f"`{param.name}: FromCtx[T] = injected`, or "
                 f"`{param.name}: Annotated[T, from_ctx()] = injected` to name a key."
             )
+
+    hints: dict[str, Any] = {}
+    if any(p.annotation is not inspect.Parameter.empty for p in params):
+        # May raise NameError on unresolved forward refs.
+        hints = get_type_hints(func, include_extras=True)
 
     markers: list[_Marker] = []
     marker_names: set[str] = set()

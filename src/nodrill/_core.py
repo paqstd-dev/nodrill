@@ -38,7 +38,7 @@ _defaults: dict[type[Any], Callable[[], Any]] = {}
 
 _MISSING = object()
 
-# The blocks open in this context, oldest first, so one closing out of order can be taken out.
+# The blocks open in this context, oldest first, so a rebuild can leave out the one closing.
 _open_blocks: ContextVar[tuple[_Provider[Any], ...]] = ContextVar("nodrill_open", default=())
 
 # A tuple rather than `str | type`, which would allocate a UnionType on every evaluation.
@@ -175,26 +175,7 @@ class _Provider(Generic[T]):
     ) -> None:
         token, self._token = self._token, None
         if token is not None:
-            entered, self._entered = self._entered, None
-            chain = _open_blocks.get()
-            # Ordinary nesting closes the newest block, so the common case is one comparison.
-            if chain and chain[-1] is self:
-                ours = True
-                _open_blocks.set(chain[:-1])
-            else:
-                ours = any(open_block is self for open_block in chain)
-                if ours:
-                    _open_blocks.set(tuple(b for b in chain if b is not self))
-            if ours:
-                if _registry.get() is not entered:
-                    # A sibling rebuilt the mapping, so every other token points at a stale one.
-                    _registry.set(_rebuilt(chain, self))
-                else:
-                    try:
-                        _registry.reset(token)
-                    except (ValueError, RuntimeError):
-                        # A copied context carries the chain, and the token belongs to neither.
-                        ours = False
+            ours = self._unwind(token)
             # Gated on what enter recorded, not on a switch a thread can flip.
             block, self._block = self._block, None
             if block is not None:
@@ -202,9 +183,36 @@ class _Provider(Generic[T]):
             # After the reset, since restoring the scope must not depend on a user's repr.
             if exc is not None:
                 _annotate(exc, self._key, self._noted(), annotate=self._annotate)
-            # Last, since a filter making the warning an error would otherwise skip all of it.
+            # Last, since a filter making the warning an error would skip the bookkeeping above.
             if not ours:
                 self._warn_orphaned(displacing=exc is not None)
+
+    def _unwind(self, token: Token[dict[str | type[Any], Any]]) -> bool:
+        """Take this block out of the registry, reporting whether this context held it.
+
+        An ordinary exit resets through the token.  A block that opened later
+        and closed first leaves every other token pointing at a snapshot taken
+        before it, so the mapping is rebuilt from the blocks still open.
+        """
+        entered, self._entered = self._entered, None
+        chain = _open_blocks.get()
+        # Ordinary nesting closes the newest block, so the common case is one comparison.
+        if chain and chain[-1] is self:
+            _open_blocks.set(chain[:-1])
+        elif any(open_block is self for open_block in chain):
+            _open_blocks.set(tuple(other for other in chain if other is not self))
+        else:
+            return False
+        if _registry.get() is not entered:
+            # A sibling rebuilt the mapping, so every other token points at a stale one.
+            _registry.set(_rebuilt(chain, self))
+            return True
+        try:
+            _registry.reset(token)
+        except (ValueError, RuntimeError):
+            # The chain is copied too, so only the refused reset marks this foreign.
+            return False
+        return True
 
     def _warn_orphaned(self, *, displacing: bool) -> None:
         """Report a block whose value outlives it."""
@@ -392,7 +400,7 @@ class _SealedExtendingProvider(_Sealing, _ExtendingProvider):
     __slots__ = ()
 
 
-def _flags_are_flags(**flags: Any) -> None:
+def _refuse_data_flags(**flags: Any) -> None:
     """Refuse a flag carrying data, which would otherwise eat a namespace attribute.
 
     provider("plan", extend="v1") reads as an attribute and binds the
@@ -467,7 +475,7 @@ def provider(
     once the block has exited, so a value captured by a closure or a
     background task reports the escape where it happens.
     """
-    _flags_are_flags(frozen=frozen, extend=extend, sealed=sealed)
+    _refuse_data_flags(frozen=frozen, extend=extend, sealed=sealed)
     target = _target_of(args, values)
     if isinstance(target, str):
         if key is not None:

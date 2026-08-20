@@ -148,10 +148,10 @@ class _CountingRegistry(dict[_Key, Any]):
         return value
 
 
-def _recount(registry: _Registry, like: _Registry) -> _Registry:
-    """Return registry as the same kind as like, so read counting survives a rebuild."""
-    if isinstance(like, _CountingRegistry):
-        return _CountingRegistry(registry, like.owners)
+def _recount(registry: _Registry, replaced: _Registry) -> _Registry:
+    """Return registry as a counting one when the mapping it replaces was counting."""
+    if isinstance(replaced, _CountingRegistry):
+        return _CountingRegistry(registry, replaced.owners)
     return registry
 
 
