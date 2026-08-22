@@ -97,6 +97,13 @@ explain
 
    That line is the only way to ask which halves :func:`set_codec` holds, which is the first thing to check when a value arrived in its encoded form.
    A process with no codec prints nothing extra.
+   A ``"suspicious"`` fallback that has fired reports its count on a line of its own in the same place, whether or not recording is on, and a fallback that never fired prints nothing.
+   A declaration that had to be dropped, made through a :func:`ref` that resolved to something no lookup could take, is reported on such a line too, since nothing else in the process says so.
+
+   .. code-block:: text
+
+      nodrill declare: the 'suspicious' fallback for Origin has fired 8514 times.
+
    The reader's own thread comes first, and a thread's blocks stay together, since a global ordering by age would interleave them and leave no stack readable anywhere.
    Outside debug mode nothing is recorded, and the returned string says so.
 

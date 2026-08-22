@@ -29,8 +29,13 @@ NoProviderError
       Why the key was not visible from here, as a string, or ``None``.
       Set only when :func:`debug` was on for the lookup, and rendered below the message when it is.
 
+   .. attribute:: provided_by
+
+      The boundaries a :func:`declare` call named for the key, as a tuple of strings, empty when the key is undeclared or its declaration named none.
+
    The message names the requested key, lists the active ones, and states the fix.
    For a string key it also offers the nearest match, found with :mod:`difflib`, and for a class key it mentions :func:`set_default`.
+   A key declared with ``provided_by`` has its boundaries named beside those hints, which is covered under :ref:`ref-declaring`.
 
    .. code-block:: text
 

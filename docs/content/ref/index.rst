@@ -11,6 +11,7 @@ The whole public surface is the import below, and everything in it comes from th
 .. code-block:: python
 
    from nodrill import (
+       Declaration,
        EnvelopeVersionError,
        Executor,
        ExpiredScopeError,
@@ -26,12 +27,14 @@ The whole public surface is the import below, and everything in it comes from th
        annotate_exceptions,
        context,
        debug,
+       declare,
        explain,
        export,
        from_ctx,
        inject,
        injected,
        isolate,
+       keys,
        lazy,
        provider,
        ref,
@@ -52,6 +55,7 @@ Nothing under ``nodrill._*`` is public, and the module layout may change between
    concurrency
    exceptions
    testing
+   declaring
    debugging
 
 .. rubric:: Version

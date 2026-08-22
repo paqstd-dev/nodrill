@@ -10,6 +10,9 @@ from typing import Any
 # What the registry is keyed by, once a ref() has resolved to the class it names.
 _Key = str | type[Any]
 
+# The same union for isinstance, as a tuple since `str | type` allocates a UnionType per evaluation.
+_KEY_TYPES = (str, type)
+
 
 def _describe_key(key: Any) -> str:
     return repr(key) if isinstance(key, str) else getattr(key, "__qualname__", repr(key))
@@ -33,9 +36,13 @@ def _reduced(error: BaseException) -> tuple[Any, tuple[Any, ...]]:
 class NoProviderError(LookupError):
     """Raised by use() when no provider is active for the requested key.
 
-    Carries the requested key, the active keys and, under debug mode, the
-    diagnosis of where the value is, as attributes.
+    Carries the requested key, the active keys, the boundaries a declaration
+    named for it and, under debug mode, the diagnosis of where the value is,
+    as attributes.
     """
+
+    # A class-level default, so one pickled by a release without the field still answers.
+    provided_by: tuple[str, ...] = ()
 
     def __init__(
         self,
@@ -43,11 +50,13 @@ class NoProviderError(LookupError):
         active_keys: Iterable[Any] = (),
         diagnosis: str | None = None,
         *,
+        provided_by: Iterable[str] = (),
         offer_debug: bool = False,
     ) -> None:
         self.key = key
         self.active_keys: tuple[Any, ...] = tuple(active_keys)
         self.diagnosis = diagnosis
+        self.provided_by: tuple[str, ...] = tuple(provided_by)
         # Never when debug mode is already on, or the hint names what the reader already did.
         self._offer_debug = offer_debug
         super().__init__(self._build_message())
@@ -74,6 +83,10 @@ class NoProviderError(LookupError):
             parts.append(f"Active providers: {listed}.")
         else:
             parts.append("No providers are active.")
+        if self.provided_by:
+            # Beside the hints rather than instead, since only they teach the syntax.
+            listed = ", ".join(self.provided_by)
+            parts.append(f"{wanted} is declared as provided by {listed}.")
         if isinstance(self.key, str):
             names = [k for k in self.active_keys if isinstance(k, str)]
             close = difflib.get_close_matches(self.key, names, n=1)
