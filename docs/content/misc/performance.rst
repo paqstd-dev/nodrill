@@ -20,19 +20,19 @@ operation                                                         ns    ×
 ================================================================  ====  ===
 one read in a function, value passed in as a parameter            23    1.0
 the same read through `use()`                                     61    2.7
-the same read through `@inject`                                   72    3.2
-the same read through a `frozen=True` provider                    118   5.2
-the same read through a `sealed=True` provider                    128   5.6
-the same read through a resolved `lazy` provider                  143   6.3
-`use(Config)` on its own, without the call frame                  45    2.0
-the same lookup through a `ref()` key                             153   6.7
+the same read through `@inject`                                   71    3.1
+the same read through a `frozen=True` provider                    117   5.1
+the same read through a `sealed=True` provider                    124   5.5
+the same read through a resolved `lazy` provider                  138   6.0
+`use(Config)` on its own, without the call frame                  44    2.0
+the same lookup through a `ref()` key                             149   6.6
 bare `ContextVar.get()`, for reference                            16    0.7
-`with provider(...)`, enter and exit                              1292  57
-the same with 8 providers already open                            1395  61
-`with provider(..., sealed=True)`, entered and exited             2857  125
-`with provider(lazy(...))`, entered and exited unread             2252  99
-`with provider(..., extend=True)`, over an 8-attribute namespace  2440  107
-`wrap(fn)()`, per call into a thread                              644   28
+`with provider(...)`, enter and exit                              1033  45
+the same with 8 providers already open                            1070  47
+`with provider(..., sealed=True)`, entered and exited             2599  114
+`with provider(lazy(...))`, entered and exited unread             2003  88
+`with provider(..., extend=True)`, over an 8-attribute namespace  2144  94
+`wrap(fn)()`, per call into a thread                              546   24
 ================================================================  ====  ===
 
 CPython 3.14.5 on macOS 26.6, arm64, measured 2026-08-20.
