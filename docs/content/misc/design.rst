@@ -62,6 +62,16 @@ The :func:`~nodrill.declare` catalogue is a second table of exactly that kind, w
 Both are configuration rather than flowing state, and state lives only in ContextVars, with the further exceptions argued for below.
 The suspicious-fallback counter beside the catalogue is instrumentation under the ledger's rules, written on the fallback path and reported by :func:`~nodrill.explain`.
 
+Two spellings on the hot path that look arbitrary
+-------------------------------------------------
+
+``provider()`` checks its three flags one at a time, spelled out, rather than looping over ``**flags``.
+The loop packed a dictionary on every call to catch a mistake almost no call makes, and it was about a seventh of the cost of entering a block.
+The message lives once, in a helper that builds the error rather than raising it, so each of the three tests is still one line.
+
+``use()`` and a provider's ``__enter__`` read the registry through a module-level name bound once at import rather than through the :class:`~contextvars.ContextVar`'s attribute.
+The compiled :func:`~nodrill.inject` wrapper already did exactly this at decoration, and doing it here too is worth about five percent of a read.
+
 The ambient context object
 --------------------------
 

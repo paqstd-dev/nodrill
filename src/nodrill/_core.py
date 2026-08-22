@@ -35,6 +35,8 @@ _EMPTY_REGISTRY: dict[str | type[Any], Any] = {}
 _registry: ContextVar[dict[str | type[Any], Any]] = ContextVar(
     "nodrill_registry", default=_EMPTY_REGISTRY
 )
+# Bound once for the two hot readers, the way the @inject wrapper already binds it at decoration.
+_registry_get = _registry.get
 
 # Configuration rather than per-context state, so deliberately not a ContextVar.
 _defaults: dict[type[Any], Callable[[], Any]] = {}
@@ -173,7 +175,7 @@ class _Provider(Generic[T]):
             # A fresh scope per entry, which is what stops a re-entry reviving the last one.
             self._scope = scope = _Scope(self._key, _user_site()[0])
             value, public = _sealed_views(value, public, scope)
-        enclosing = _registry.get()
+        enclosing = _registry_get()
         updated = dict(enclosing)
         updated[self._key] = public
         if _debug_state.recording:
@@ -415,20 +417,29 @@ class _SealedExtendingProvider(_Sealing, _ExtendingProvider):
     __slots__ = ()
 
 
-def _refuse_data_flags(**flags: Any) -> None:
+def _data_flag_error(name: str, value: Any) -> TypeError:
+    """Build the error for a flag handed data, naming the namespace spelling that wanted it."""
+    return TypeError(
+        f"provider({name}=...) is a flag and cannot carry data, and "
+        f"{value!r} would turn it on as well as vanish. For a namespace "
+        f"attribute of that name write "
+        f"provider(Namespace({name}={value!r}, ...), key=<the name>)"
+    )
+
+
+def _refuse_data_flags(frozen: Any, extend: Any, sealed: Any) -> None:
     """Refuse a flag carrying data, which would otherwise eat a namespace attribute.
 
     provider("plan", extend="v1") reads as an attribute and binds the
     parameter, so the value disappears and the feature turns itself on.
     """
-    for name, value in flags.items():
-        if value is not True and value is not False:
-            raise TypeError(
-                f"provider({name}=...) is a flag and cannot carry data, and "
-                f"{value!r} would turn it on as well as vanish. For a namespace "
-                f"attribute of that name write "
-                f"provider(Namespace({name}={value!r}, ...), key=<the name>)"
-            )
+    # Spelled out rather than looped over **flags, which packed a dict on every provider() call.
+    if frozen is not True and frozen is not False:
+        raise _data_flag_error("frozen", frozen)
+    if extend is not True and extend is not False:
+        raise _data_flag_error("extend", extend)
+    if sealed is not True and sealed is not False:
+        raise _data_flag_error("sealed", sealed)
 
 
 @overload
@@ -490,7 +501,7 @@ def provider(
     once the block has exited, so a value captured by a closure or a
     background task reports the escape where it happens.
     """
-    _refuse_data_flags(frozen=frozen, extend=extend, sealed=sealed)
+    _refuse_data_flags(frozen, extend, sealed)
     target = _target_of(args, values)
     if isinstance(target, str):
         if key is not None:
@@ -604,7 +615,7 @@ def use(key: Any, *, default: Any = _MISSING) -> Any:
     instance typed as that class.  A miss tries a set_default() factory,
     then the default argument, then raises NoProviderError.
     """
-    registry = _registry.get()
+    registry = _registry_get()
     try:
         return registry[key]
     except KeyError:
