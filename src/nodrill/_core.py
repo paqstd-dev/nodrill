@@ -15,7 +15,7 @@ from types import MappingProxyType, TracebackType
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, overload
 
 from ._ambient import _ambient
-from ._debug import _diagnose, _record_enter, _record_exit, _recount, _uncounted, _user_site
+from ._debug import _diagnose, _record_enter, _record_exit, _recount, _user_site
 from ._debug import _state as _debug_state
 from ._errors import NoProviderError, OrphanedProviderWarning, _describe_key
 from ._frozen import _FrozenProxy
@@ -38,8 +38,17 @@ _defaults: dict[type[Any], Callable[[], Any]] = {}
 
 _MISSING = object()
 
-# The blocks open in this context, oldest first, so a rebuild can leave out the one closing.
-_open_blocks: ContextVar[tuple[_Provider[Any], ...]] = ContextVar("nodrill_open", default=())
+
+class _Open:
+    """The key the open-block chain rides under, oldest first, for a block closing out of order.
+
+    The chain lives in the mapping itself rather than in a second ContextVar,
+    so it copies with the registry and entering a block stays one ContextVar
+    operation.  A class, so the registry keeps holding nothing but str and
+    type keys, and private, so no lookup can name it.  The two places that
+    iterate the registry filter it out.
+    """
+
 
 # A tuple rather than `str | type`, which would allocate a UnionType on every evaluation.
 _KEY_TYPES = (str, type)
@@ -88,22 +97,30 @@ class Namespace:
         return f"Namespace({inner})"
 
 
-def _rebuilt(
-    chain: tuple[_Provider[Any], ...], leaving: _Provider[Any]
+def _repaired(
+    chain: tuple[_Provider[Any], ...],
+    leaving: _Provider[Any],
+    current: dict[str | type[Any], Any],
 ) -> dict[str | type[Any], Any]:
-    """Return what the blocks still open describe, for one closing out of order.
+    """Return the current mapping with the block closing out of order taken out.
 
     Resetting through the token would reinstate a snapshot taken before the
     others opened, which is how a closed block's value survives a sibling.
-    The blocks themselves are the only record of what is still open, so the
-    mapping is built from them, oldest first, and the innermost wins.
+    The current mapping is right for every key but the leaving block's, so
+    only that one is restored, to the innermost still-open block providing it.
     """
-    rebuilt: dict[str | type[Any], Any] = {}
-    for open_block in chain:
+    repaired = dict(current)
+    key = leaving._key  # noqa: SLF001
+    # Innermost first, so the first block still open under the key is the one that owns it now.
+    for open_block in reversed(chain):
         entered = open_block._entered  # noqa: SLF001
-        if open_block is not leaving and entered is not None:
-            rebuilt[open_block._key] = entered[open_block._key]  # noqa: SLF001
-    return _recount(rebuilt, _registry.get())
+        if open_block is not leaving and entered is not None and open_block._key == key:  # noqa: SLF001
+            repaired[key] = entered[key]
+            break
+    else:
+        repaired.pop(key, None)
+    repaired[_Open] = tuple(block for block in chain if block is not leaving)
+    return _recount(repaired, current)
 
 
 class _Provider(Generic[T]):
@@ -143,7 +160,7 @@ class _Provider(Generic[T]):
         self._annotate = annotate
         self._token: Token[dict[str | type[Any], Any]] | None = None
         self._block: int | None = None
-        # The exact mapping installed, which is how exit tells an ordinary unwind from a rebuild.
+        # The exact mapping installed, which is how exit tells an ordinary unwind from a repair.
         self._entered: dict[str | type[Any], Any] | None = None
 
     def __enter__(self) -> T:
@@ -162,9 +179,10 @@ class _Provider(Generic[T]):
         updated[self._key] = public
         if _debug_state.recording:
             self._block, updated = _record_enter(self._key, enclosing, updated)
+        # After the ledger, so the chain lands on the mapping actually installed.
+        updated[_Open] = (*enclosing.get(_Open, ()), self)
         self._entered = updated
         self._token = _registry.set(updated)
-        _open_blocks.set((*_open_blocks.get(), self))
         return value
 
     def __exit__(
@@ -192,27 +210,25 @@ class _Provider(Generic[T]):
 
         An ordinary exit resets through the token.  A block that opened later
         and closed first leaves every other token pointing at a snapshot taken
-        before it, so the mapping is rebuilt from the blocks still open.
+        before it, so the current mapping is repaired instead of reset.
         """
         entered, self._entered = self._entered, None
-        chain = _open_blocks.get()
-        # Ordinary nesting closes the newest block, so the common case is one comparison.
-        if chain and chain[-1] is self:
-            _open_blocks.set(chain[:-1])
-        elif any(open_block is self for open_block in chain):
-            _open_blocks.set(tuple(other for other in chain if other is not self))
-        else:
-            return False
-        if _registry.get() is not entered:
-            # A sibling rebuilt the mapping, so every other token points at a stale one.
-            _registry.set(_rebuilt(chain, self))
+        current = _registry.get()
+        # Ordinary nesting exits over the mapping it installed, so the common case is one check.
+        if current is entered:
+            try:
+                _registry.reset(token)
+            except (ValueError, RuntimeError):
+                # A copied context shares the mapping, so only the refused reset marks this foreign.
+                return False
             return True
-        try:
-            _registry.reset(token)
-        except (ValueError, RuntimeError):
-            # The chain is copied too, so only the refused reset marks this foreign.
-            return False
-        return True
+        chain: tuple[_Provider[Any], ...] = current.get(_Open, ())
+        # Membership is identity, since no provider defines __eq__.
+        if self in chain:
+            # A block opened later is still open, so every token here points at a stale mapping.
+            _registry.set(_repaired(chain, self, current))
+            return True
+        return False
 
     def _warn_orphaned(self, *, displacing: bool) -> None:
         """Report a block whose value outlives it."""
@@ -630,7 +646,8 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
     # The resolved target, since that is what a provider registered under.
     recording = _debug_state.recording
     diagnosis = _diagnose(target) if recording else None
-    raise NoProviderError(key, _registry.get().keys(), diagnosis, offer_debug=not recording)
+    available = [k for k in _registry.get() if k is not _Open]
+    raise NoProviderError(key, available, diagnosis, offer_debug=not recording)
 
 
 def active() -> Mapping[str | type[Any], Any]:
@@ -640,7 +657,11 @@ def active() -> Mapping[str | type[Any], Any]:
     assertions.  The view is a snapshot and does not track later scopes, and
     reading it is not a read of any provider under debug(unused=True).
     """
-    return MappingProxyType(_uncounted(_registry.get()))
+    registry = _registry.get()
+    if _Open in registry:
+        # A counting registry always carries _Open, so the filter is also the uncounting copy.
+        registry = {key: value for key, value in registry.items() if key is not _Open}
+    return MappingProxyType(registry)
 
 
 def set_default(cls: type[T], factory: Callable[[], T] | None) -> type[T]:
