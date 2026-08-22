@@ -3,6 +3,7 @@
 import importlib
 import pickle
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -320,6 +321,20 @@ class TestSuspiciousFallback:
         assert "has fired 1 time." in nodrill.explain()
 
 
+def _resolved_before_a_scan(name: str) -> Any:
+    """Return a ref that resolved, with a pending scan having run since.
+
+    The stuck declaration keeps the pending list non-empty, so absorbing is
+    still gated on the resolution count rather than skipped outright, which is
+    what leaves a later declaration through this ref stranded on a stale epoch.
+    """
+    declare(ref("nodrill_nonexistent.module:Nothing"), doc="never")
+    late = ref(f"{__name__}:{name}")
+    hash(late)
+    keys()
+    return late
+
+
 class TestRefDeclarations:
     def test_a_pending_ref_is_not_listed(self) -> None:
         """Nothing is imported by declare() or keys(), so the entry waits."""
@@ -404,6 +419,37 @@ class TestRefDeclarations:
         declare(ref("nodrill_nonexistent.module:Nothing"), doc="never")
         keys()
         assert all(record.doc != "never" for record in keys().values())
+
+    def test_a_ref_that_resolved_before_the_last_scan_still_lands(self) -> None:
+        """Queueing a declaration reopens the scan, so an already-resolved ref is not stranded."""
+        late = _resolved_before_a_scan("Session")
+        declare(late, doc="through the ref", provided_by="worker boundary")
+        assert keys()[Session].doc == "through the ref"
+        with pytest.raises(NoProviderError) as exc_info:
+            use(Session)
+        assert exc_info.value.provided_by == ("worker boundary",)
+
+    def test_a_suspicious_ref_that_resolved_before_the_last_scan_counts(self) -> None:
+        """The fallback gate is seeded when the declaration lands, not when a later ref resolves."""
+        declare(_resolved_before_a_scan("Origin"), fallback="suspicious")
+        set_default(Origin, Origin)
+        use(Origin)
+        assert "has fired 1 time." in nodrill.explain()
+
+    def test_a_queued_ref_declaration_does_not_overwrite_a_later_direct_one(self) -> None:
+        """The later declare() wins even when the ref was queued after a scan had run."""
+        declare(_resolved_before_a_scan("Origin"), doc="through the ref")
+        declare(Origin, doc="direct and later")
+        # Resolving anything runs a scan, which must not bring the queued declaration back.
+        hash(ref(f"{__name__}:Session"))
+        assert keys()[Origin].doc == "direct and later"
+
+    def test_explain_absorbs_before_it_reports_a_drop(self) -> None:
+        """explain() is the only place a drop is reported, so it scans for itself."""
+        late = ref("nodrill:use")
+        declare(late, doc="not a key")
+        late.resolve()
+        assert "declaration was dropped" in nodrill.explain()
 
 
 AUDIT_NAME = "audit trail"

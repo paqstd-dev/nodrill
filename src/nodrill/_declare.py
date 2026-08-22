@@ -162,6 +162,8 @@ def _declare_key(
         entry = _Pending(key, doc, boundaries, fallback, _during_import())
         with _lock:
             _pending.append(entry)
+            # Forced, since this ref may have resolved before the last scan.
+            _scan.at = -1
         return key
     if not isinstance(key, _KEY_TYPES):
         raise TypeError(
@@ -292,6 +294,8 @@ def _note_fallback(target: type[Any]) -> None:
 
 def _report_lines() -> list[str]:
     """Return the fired counts and the dropped declarations, for explain()."""
+    # First, since explain() is the only place a dropped declaration is reported.
+    _absorb()
     # A copy, since another thread's firing may resize the dict under the sort.
     counts = sorted(dict(_fired).items(), key=lambda item: _describe_key(item[0]))
     lines = [
