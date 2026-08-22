@@ -59,6 +59,8 @@ The provider side stays exactly what it was, because a ref and the class it name
 .. code-block:: python
    :caption: myapp/middleware.py
 
+   from nodrill import provider
+
    from myapp.context import RequestScope
 
 

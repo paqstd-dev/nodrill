@@ -130,9 +130,12 @@ class _Resolution:
         except Exception as exc:
             # Uncached, since a cancelled task says nothing about the factory.
             self.error = exc
+            self.context = Context()
             raise
         finally:
             self.owner = None
+        # Dropped once the build has settled, since the snapshot holds every sibling value too.
+        self.context = Context()
         if _own_view(built, self):
             # Otherwise the view becomes its own value and every later read recurses.
             error = _self_reference_error(self.key)

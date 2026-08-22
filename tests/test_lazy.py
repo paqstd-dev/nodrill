@@ -546,3 +546,25 @@ class TestRejections:
     def test_carrier_repr_names_the_key(self) -> None:
         carrier: Any = lazy(Config, Config)
         assert repr(carrier).startswith("lazy(Config, ")
+
+
+class TestABuiltCellReleasesItsScope:
+    """The snapshot a factory needs must not outlive the build that needed it."""
+
+    def test_a_sibling_value_is_not_pinned(self) -> None:
+        class Sibling:
+            pass
+
+        class Built:
+            def __init__(self) -> None:
+                self.n = 1
+
+        sibling = Sibling()
+        watch = weakref.ref(sibling)
+        with provider(sibling), provider(lazy(Built, Built)):
+            cell = use(Built)
+            assert cell.n == 1
+        del sibling
+        # No collect(), since the snapshot going means plain reference counting frees it.
+        assert watch() is None
+        assert cell.n == 1

@@ -2,7 +2,7 @@ import copy
 import pickle
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 import pytest
 
@@ -10,6 +10,7 @@ from nodrill import (
     EnvelopeVersionError,
     ExpiredScopeError,
     KeyResolutionError,
+    Namespace,
     NoProviderError,
     provider,
     set_default,
@@ -201,3 +202,56 @@ class TestUseDefault:
 
     def test_none_is_a_real_default(self) -> None:
         assert use("missing", default=None) is None
+
+
+class Store(Protocol):
+    def put(self, blob: bytes) -> None: ...
+
+
+class Base:
+    pass
+
+
+class Derived(Base):
+    pass
+
+
+class TestTheHintCanBeFollowed:
+    """A hint proposing what the caller cannot write is worse than no hint."""
+
+    def test_a_subclass_in_scope_names_the_exact_key_rule(self) -> None:
+        with provider(Derived()), pytest.raises(NoProviderError) as raised:
+            use(Base)
+        message = str(raised.value)
+        assert "Derived is active and subclasses Base" in message
+        assert "provider(instance, key=Base)" in message
+        assert "provider(Base(...))" not in message
+
+    def test_a_protocol_is_never_offered_as_a_constructor(self) -> None:
+        with pytest.raises(NoProviderError) as raised:
+            # The point of key= is that consumers depend on the protocol, not the class.
+            use(Store)  # type: ignore[type-abstract]
+        message = str(raised.value)
+        assert "provider(instance, key=Store)" in message
+        assert "provider(Store(...))" not in message
+
+
+class TestAFlagCannotCarryData:
+    """A flag name that reads as an attribute would eat the value and turn itself on."""
+
+    @pytest.mark.parametrize(
+        ("flag", "value"),
+        [("extend", "v1"), ("sealed", 1200), ("frozen", "yes")],
+        ids=["extend", "sealed", "frozen"],
+    )
+    def test_a_non_bool_flag_is_refused(self, flag: str, value: object) -> None:
+        with pytest.raises(TypeError) as raised:
+            # A flag carrying data is what the checkers refuse and the call has to reach.
+            provider("plan", tier="pro", **{flag: value})  # type: ignore[call-overload]
+        message = str(raised.value)
+        assert f"provider({flag}=...) is a flag and cannot carry data" in message
+        assert "Namespace(" in message
+
+    def test_the_escape_hatch_keeps_the_attribute(self) -> None:
+        with provider(Namespace(extend="v1", tier="pro"), key="plan"):
+            assert use("plan").extend == "v1"

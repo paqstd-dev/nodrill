@@ -16,6 +16,7 @@ provider
 
    Make a value available to the whole call subtree through :func:`use`.
    Returns a context manager, and the value is registered on entry and removed on exit, whether the block completes or raises.
+   A block closed from a context it did not open in is the one shape that cannot unwind, which :exc:`OrphanedProviderWarning` reports.
 
    :param name: A string key.
       The block yields a fresh :class:`Namespace` registered under it, prefilled from ``**values``.

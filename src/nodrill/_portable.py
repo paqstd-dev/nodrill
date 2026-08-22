@@ -28,7 +28,10 @@ _SCALARS = frozenset({str, int, float, bool, type(None)})
 
 # A data descriptor wins over __dict__, so a value under one of these names is never readable.
 _RESERVED = frozenset(
-    name for name, member in vars(Namespace).items() if hasattr(member, "__set__")
+    name
+    for klass in Namespace.__mro__
+    for name, member in vars(klass).items()
+    if hasattr(member, "__set__")
 )
 
 _REFUSED = (

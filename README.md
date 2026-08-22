@@ -5,7 +5,8 @@
 [![CI](https://github.com/paqstd-dev/nodrill/actions/workflows/ci.yml/badge.svg)](https://github.com/paqstd-dev/nodrill/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/paqstd-dev/nodrill/graph/badge.svg)](https://codecov.io/gh/paqstd-dev/nodrill)
 
-nodrill gives a call tree a shared, scoped context. Values set in a `provider` block are visible to any function below it through `use()`, without being passed through the signatures in between.
+nodrill gives a call tree a shared, scoped context.
+Values set in a `provider` block are visible to any function below it through `use()`, without being passed through the signatures in between.
 It is built on `contextvars`, so lookups are thread-safe and asyncio-task-safe, and it has no dependencies.
 
 ```python
@@ -85,7 +86,7 @@ Python 3.10 or newer.
 
 Full documentation is at <https://nodrill.readthedocs.io/>.
 
-Start with the [tutorial](https://nodrill.readthedocs.io/en/latest/content/intro/quickstart.html), which covers the whole library in about ten minutes, over typed class keys, fallbacks for a miss, `@inject`, threads and asyncio, frozen providers, and testing.
+Start with the [tutorial](https://nodrill.readthedocs.io/en/latest/content/intro/quickstart.html), which covers the core in about ten minutes, over typed class keys, fallbacks for a miss, `@inject`, threads and asyncio, and testing.
 
 ## Contributing
 

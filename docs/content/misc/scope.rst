@@ -30,7 +30,8 @@ nodrill packages exactly that discipline, scoped ``with`` blocks, class-keyed ty
 Not an IoC container
 --------------------
 
-``use(Config)`` returns what a provider upstream put there. nodrill never constructs a dependency graph, resolves a lifetime, or decides what to build.
+``use(Config)`` returns what a provider upstream put there.
+nodrill never constructs a dependency graph, resolves a lifetime, or decides what to build.
 
 For factory graphs and lifecycles, use a container such as dishka.
 For endpoint-level injection wired into request validation, FastAPI's ``Depends`` already does that job.

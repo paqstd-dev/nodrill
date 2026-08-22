@@ -15,7 +15,7 @@ from types import MappingProxyType, TracebackType
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, overload
 
 from ._ambient import _ambient
-from ._debug import _diagnose, _record_enter, _record_exit, _uncounted, _user_site
+from ._debug import _diagnose, _record_enter, _record_exit, _recount, _user_site
 from ._debug import _state as _debug_state
 from ._errors import NoProviderError, OrphanedProviderWarning, _describe_key
 from ._frozen import _FrozenProxy
@@ -37,6 +37,18 @@ _registry: ContextVar[dict[str | type[Any], Any]] = ContextVar(
 _defaults: dict[type[Any], Callable[[], Any]] = {}
 
 _MISSING = object()
+
+
+class _Open:
+    """The key the open-block chain rides under, oldest first, for a block closing out of order.
+
+    The chain lives in the mapping itself rather than in a second ContextVar,
+    so it copies with the registry and entering a block stays one ContextVar
+    operation.  A class, so the registry keeps holding nothing but str and
+    type keys, and private, so no lookup can name it.  The two places that
+    iterate the registry filter it out.
+    """
+
 
 # A tuple rather than `str | type`, which would allocate a UnionType on every evaluation.
 _KEY_TYPES = (str, type)
@@ -85,13 +97,48 @@ class Namespace:
         return f"Namespace({inner})"
 
 
+def _repaired(
+    chain: tuple[_Provider[Any], ...],
+    leaving: _Provider[Any],
+    current: dict[str | type[Any], Any],
+) -> dict[str | type[Any], Any]:
+    """Return the current mapping with the block closing out of order taken out.
+
+    Resetting through the token would reinstate a snapshot taken before the
+    others opened, which is how a closed block's value survives a sibling.
+    The current mapping is right for every key but the leaving block's, so
+    only that one is restored, to the innermost still-open block providing it.
+    """
+    repaired = dict(current)
+    key = leaving._key  # noqa: SLF001
+    # Innermost first, so the first block still open under the key is the one that owns it now.
+    for open_block in reversed(chain):
+        entered = open_block._entered  # noqa: SLF001
+        if open_block is not leaving and entered is not None and open_block._key == key:  # noqa: SLF001
+            repaired[key] = entered[key]
+            break
+    else:
+        repaired.pop(key, None)
+    repaired[_Open] = tuple(block for block in chain if block is not leaving)
+    return _recount(repaired, current)
+
+
 class _Provider(Generic[T]):
     """Context manager returned by provider().
 
     Reusable sequentially, not re-entrant while active.
     """
 
-    __slots__ = ("_annotate", "_block", "_key", "_public", "_scope", "_token", "_value")
+    __slots__ = (
+        "_annotate",
+        "_block",
+        "_entered",
+        "_key",
+        "_public",
+        "_scope",
+        "_token",
+        "_value",
+    )
 
     # A class attribute rather than a field, so an ordinary provider stores nothing for it.
     _sealed = False
@@ -113,6 +160,8 @@ class _Provider(Generic[T]):
         self._annotate = annotate
         self._token: Token[dict[str | type[Any], Any]] | None = None
         self._block: int | None = None
+        # The exact mapping installed, which is how exit tells an ordinary unwind from a repair.
+        self._entered: dict[str | type[Any], Any] | None = None
 
     def __enter__(self) -> T:
         if self._token is not None:
@@ -130,6 +179,9 @@ class _Provider(Generic[T]):
         updated[self._key] = public
         if _debug_state.recording:
             self._block, updated = _record_enter(self._key, enclosing, updated)
+        # After the ledger, so the chain lands on the mapping actually installed.
+        updated[_Open] = (*enclosing.get(_Open, ()), self)
+        self._entered = updated
         self._token = _registry.set(updated)
         return value
 
@@ -141,11 +193,7 @@ class _Provider(Generic[T]):
     ) -> None:
         token, self._token = self._token, None
         if token is not None:
-            try:
-                _registry.reset(token)
-            except ValueError:
-                # The context the token belongs to is not the one exiting, so nothing to undo here.
-                self._warn_orphaned()
+            ours = self._unwind(token)
             # Gated on what enter recorded, not on a switch a thread can flip.
             block, self._block = self._block, None
             if block is not None:
@@ -153,21 +201,54 @@ class _Provider(Generic[T]):
             # After the reset, since restoring the scope must not depend on a user's repr.
             if exc is not None:
                 _annotate(exc, self._key, self._noted(), annotate=self._annotate)
+            # Last, since a filter making the warning an error would skip the bookkeeping above.
+            if not ours:
+                self._warn_orphaned(displacing=exc is not None)
 
-    def _warn_orphaned(self) -> None:
+    def _unwind(self, token: Token[dict[str | type[Any], Any]]) -> bool:
+        """Take this block out of the registry, reporting whether this context held it.
+
+        An ordinary exit resets through the token.  A block that opened later
+        and closed first leaves every other token pointing at a snapshot taken
+        before it, so the current mapping is repaired instead of reset.
+        """
+        entered, self._entered = self._entered, None
+        current = _registry.get()
+        # Ordinary nesting exits over the mapping it installed, so the common case is one check.
+        if current is entered:
+            try:
+                _registry.reset(token)
+            except (ValueError, RuntimeError):
+                # A copied context shares the mapping, so only the refused reset marks this foreign.
+                return False
+            return True
+        chain: tuple[_Provider[Any], ...] = current.get(_Open, ())
+        # Membership is identity, since no provider defines __eq__.
+        if self in chain:
+            # A block opened later is still open, so every token here points at a stale mapping.
+            _registry.set(_repaired(chain, self, current))
+            return True
+        return False
+
+    def _warn_orphaned(self, *, displacing: bool) -> None:
         """Report a block whose value outlives it."""
         name = _describe_key(self._key)
         # The ledger's frame walk, so the warning names the user's line and not this unwind.
         levels = _user_site()[1]
-        warnings.warn(
-            f"nodrill: the provider for {name} exited in a different context than it "
-            f"opened in, so its value stays visible to whoever opened it. An async "
-            f"generator holding the block and abandoned without contextlib.aclosing() "
-            f"does this. Wrap the iteration in aclosing(), or move the block out of "
-            f"the generator.",
-            OrphanedProviderWarning,
-            stacklevel=levels,
+        message = (
+            f"nodrill: the provider for {name} is closing from a context it did not "
+            f"open in, so the block cannot unwind and its value stays in the context "
+            f"that holds it. An async generator abandoned without contextlib.aclosing() "
+            f"is the usual cause, and an ExitStack entered and closed in different tasks "
+            f"or a block entered on one thread and exited on another do the same. "
+            f"Close the block in the context that opened it."
         )
+        try:
+            warnings.warn(message, OrphanedProviderWarning, stacklevel=levels)
+        except Warning:
+            # A filter chose the error, and the failure on its way out is still worth more.
+            if not displacing:
+                raise
 
     def _noted(self) -> Any:
         """Return what a note describes, which is what this block itself provided."""
@@ -335,6 +416,22 @@ class _SealedExtendingProvider(_Sealing, _ExtendingProvider):
     __slots__ = ()
 
 
+def _refuse_data_flags(**flags: Any) -> None:
+    """Refuse a flag carrying data, which would otherwise eat a namespace attribute.
+
+    provider("plan", extend="v1") reads as an attribute and binds the
+    parameter, so the value disappears and the feature turns itself on.
+    """
+    for name, value in flags.items():
+        if value is not True and value is not False:
+            raise TypeError(
+                f"provider({name}=...) is a flag and cannot carry data, and "
+                f"{value!r} would turn it on as well as vanish. For a namespace "
+                f"attribute of that name write "
+                f"provider(Namespace({name}={value!r}, ...), key=<the name>)"
+            )
+
+
 @overload
 def provider(
     name: str,
@@ -394,6 +491,7 @@ def provider(
     once the block has exited, so a value captured by a closure or a
     background task reports the escape where it happens.
     """
+    _refuse_data_flags(frozen=frozen, extend=extend, sealed=sealed)
     target = _target_of(args, values)
     if isinstance(target, str):
         if key is not None:
@@ -546,8 +644,10 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
     if default is not _MISSING:
         return default
     # The resolved target, since that is what a provider registered under.
-    diagnosis = _diagnose(target) if _debug_state.recording else None
-    raise NoProviderError(key, _registry.get().keys(), diagnosis)
+    recording = _debug_state.recording
+    diagnosis = _diagnose(target) if recording else None
+    available = [k for k in _registry.get() if k is not _Open]
+    raise NoProviderError(key, available, diagnosis, offer_debug=not recording)
 
 
 def active() -> Mapping[str | type[Any], Any]:
@@ -557,7 +657,11 @@ def active() -> Mapping[str | type[Any], Any]:
     assertions.  The view is a snapshot and does not track later scopes, and
     reading it is not a read of any provider under debug(unused=True).
     """
-    return MappingProxyType(_uncounted(_registry.get()))
+    registry = _registry.get()
+    if _Open in registry:
+        # A counting registry always carries _Open, so the filter is also the uncounting copy.
+        registry = {key: value for key, value in registry.items() if key is not _Open}
+    return MappingProxyType(registry)
 
 
 def set_default(cls: type[T], factory: Callable[[], T] | None) -> type[T]:

@@ -3,7 +3,7 @@
 Tutorial
 ========
 
-This page builds one small application and, along the way, touches every feature nodrill has.
+This page builds one small application over the shapes you reach for first.
 It should take about ten minutes.
 
 .. contents::

@@ -88,7 +88,8 @@ Mapping the operations
 Keeping some of both
 --------------------
 
-There is no conflict. nodrill's registry is one :class:`~contextvars.ContextVar` among however many your application already has, and its scopes nest with yours in the usual way.
+There is no conflict.
+nodrill's registry is one :class:`~contextvars.ContextVar` among however many your application already has, and its scopes nest with yours in the usual way.
 Migrate the values that hurt, leave the rest, and both see the same context propagation across tasks and threads.
 
 One case does not translate, a ``ContextVar`` created at runtime, per key.

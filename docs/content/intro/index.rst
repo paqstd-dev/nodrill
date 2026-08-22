@@ -4,7 +4,7 @@ Getting started
 ===============
 
 New to nodrill?
-Install it, then work through the tutorial, which starts from the problem the library exists to solve and ends with every feature used at least once.
+Install it, then work through the tutorial, which starts from the problem the library exists to solve and ends with a working application.
 
 .. toctree::
    :maxdepth: 1

@@ -29,7 +29,7 @@ A task therefore runs under the providers that were active at creation time, and
 
    await asyncio.gather(handle("acme"), handle("globex"))
 
-Three properties are worth stating plainly.
+Four properties are worth stating plainly.
 
 Awaits do not lose context.
    The lookup after an ``await`` sees the same providers as the one before it.
@@ -41,7 +41,12 @@ Sibling tasks are isolated.
 A task keeps what it had at creation.
    A task created inside a provider block still sees that provider after the block has exited in the parent, since it holds its own snapshot.
 
-There is nothing to configure and no nodrill-specific helper for asyncio.
+A block held by a generator has to be closed where it was iterated.
+   An abandoned async generator is finalized through a task of its own, so the block inside it closes from a context that never held it, cannot unwind, and leaves its value behind in the caller's.
+   Wrap the iteration in :func:`contextlib.aclosing`, or open the block around the loop rather than inside the generator.
+   :exc:`~nodrill.OrphanedProviderWarning` reports it when it happens.
+
+There is no nodrill-specific helper for asyncio, and that last shape is the one to know about.
 
 The third property is the one ``sealed=True`` changes, and deliberately.
 A sealed value travels into the task or the thread like any other, and it stops working when the block exits in the parent, wherever the work has got to.

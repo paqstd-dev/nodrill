@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 from collections.abc import Iterable
+from contextlib import suppress
 from typing import Any
 
 # What the registry is keyed by, once a ref() has resolved to the class it names.
@@ -37,15 +38,33 @@ class NoProviderError(LookupError):
     """
 
     def __init__(
-        self, key: Any, active_keys: Iterable[Any] = (), diagnosis: str | None = None
+        self,
+        key: Any,
+        active_keys: Iterable[Any] = (),
+        diagnosis: str | None = None,
+        *,
+        offer_debug: bool = False,
     ) -> None:
         self.key = key
         self.active_keys: tuple[Any, ...] = tuple(active_keys)
         self.diagnosis = diagnosis
+        # Never when debug mode is already on, or the hint names what the reader already did.
+        self._offer_debug = offer_debug
         super().__init__(self._build_message())
 
     def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
         return _reduced(self)
+
+    def _subclassing_key(self) -> Any:
+        """Return an active key that subclasses the wanted one, which exact keys do not answer."""
+        if not isinstance(self.key, type):
+            return None
+        for active in self.active_keys:
+            # A plain Protocol refuses the test, which is the case key= exists for.
+            with suppress(TypeError):
+                if isinstance(active, type) and issubclass(active, self.key):
+                    return active
+        return None
 
     def _build_message(self) -> str:
         wanted = _describe_key(self.key)
@@ -61,13 +80,27 @@ class NoProviderError(LookupError):
             if close:
                 parts.append(f"Did you mean {close[0]!r}?")
             parts.append(f"Hint: did you forget `with provider({self.key!r})`?")
+        elif (covered := self._subclassing_key()) is not None:
+            parts.append(
+                f"{_describe_key(covered)} is active and subclasses {wanted}, and keys "
+                f"are exact. Register it under the base with "
+                f"`provider(instance, key={wanted})`."
+            )
         else:
-            # A class opens its own provider, while anything else naming one is a key.
-            opener = f"{wanted}(...)" if isinstance(self.key, type) else f"instance, key={wanted}"
+            # A protocol cannot be instantiated, so it can only ever be named as a key.
+            instantiable = isinstance(self.key, type) and not getattr(
+                self.key, "_is_protocol", False
+            )
+            opener = f"{wanted}(...)" if instantiable else f"instance, key={wanted}"
             parts.append(
                 f"Hint: did you forget `with provider({opener})`? "
                 f"A fallback can be registered with "
                 f"`set_default({wanted}, ...)`."
+            )
+        if self._offer_debug:
+            parts.append(
+                "Run under `with nodrill.debug():` to find out whether the value is "
+                "open on another thread or task."
             )
         message = " ".join(parts)
         # Below the message rather than instead of it, so debug mode off reads as it always did.
@@ -169,9 +202,9 @@ class UnusedProviderWarning(UserWarning):
 
 
 class OrphanedProviderWarning(UserWarning):
-    """Warned when a block exits in a different context than it opened in.
+    """Warned when a block is closed from a context it did not open in.
 
     A token cannot be reset from a context it was not created in, so such
-    a block never unwinds and the value it provided stays visible to
-    whoever opened it.
+    a block never unwinds and its value is never taken back out of the
+    context that holds it.
     """

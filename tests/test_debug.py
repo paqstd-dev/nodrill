@@ -50,6 +50,12 @@ PLAIN = (
     "A fallback can be registered with `set_default(Session, ...)`."
 )
 
+# Debug mode off adds the pointer to it, since a reader who cannot see the scope needs one.
+UNDIAGNOSED = (
+    f"{PLAIN} Run under `with nodrill.debug():` to find out whether the value is "
+    f"open on another thread or task."
+)
+
 
 def line_above() -> int:
     """Return the line number of the statement just above the call."""
@@ -128,9 +134,9 @@ def needs_other(other: FromCtx[Other] = injected) -> Other:
 
 
 class TestDebugOff:
-    def test_message_is_unchanged(self) -> None:
-        """With debug mode off the miss says exactly what it said before it existed."""
-        assert str(read_session()) == PLAIN
+    def test_the_miss_points_at_debug_mode(self) -> None:
+        """With debug mode off the miss names the tool that would diagnose it."""
+        assert str(read_session()) == UNDIAGNOSED
 
     def test_no_diagnosis_is_attached(self) -> None:
         """The diagnosis attribute is None unless debug mode was on for the lookup."""

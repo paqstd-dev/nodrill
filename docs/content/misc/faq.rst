@@ -30,7 +30,8 @@ Can I use it together with a DI container?
 ------------------------------------------
 
 Yes, and the two do different jobs.
-A container such as dishka owns construction, lifetimes, and the dependency graph. nodrill carries an already-constructed value down a call stack.
+A container such as dishka owns construction, lifetimes, and the dependency graph.
+nodrill carries an already-constructed value down a call stack.
 
 A common arrangement is to let the container build the request scope and hand it to ``provider`` at the boundary.
 
