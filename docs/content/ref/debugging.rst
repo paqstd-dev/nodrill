@@ -53,6 +53,30 @@ debug
 
       NODRILL_DEBUG=1 python -m myapp
 
+.. _ref-contract:
+
+Recording a contract
+--------------------
+
+``NODRILL_CONTRACT`` names a directory and turns on recording of what each entry point reads.
+It is read once, at import, like ``NODRILL_DEBUG``, and any non-empty value is a directory rather than a switch, so ``0`` names a directory called ``0``.
+Every process of a run writes its own file there, including one a suite spawns, and the files are merged when the contract is rendered.
+
+``NODRILL_CONTRACT_ENTRY`` names the provider keys that are boundaries, as rendered keys separated by commas, so ``"'http request',myapp.web:Request"``.
+A block whose key is named mints its own entry point even when a block is open above it.
+Without it the entry point is whatever block is outermost, which in an application that opens configuration above its server loop is that configuration.
+
+.. code-block:: bash
+
+   NODRILL_CONTRACT=.nodrill NODRILL_CONTRACT_ENTRY="'http request'" pytest
+   python -m nodrill contract --from .nodrill --write nodrill.contract
+
+``python -m nodrill contract`` renders what a run recorded.
+``--from`` names the directory and is required, ``--write`` names the file and defaults to standard output, and the summary of what the contract rests on always goes to standard error so the artefact can be piped.
+It returns ``0`` when it rendered a contract and ``1`` when it could not, leaving ``2`` to mean the command line itself was wrong.
+
+:doc:`/content/howto/record-what-a-handler-reads` is the task-shaped version, with the file format and what it is worth.
+
    With ``unused=True``, a provider nothing read warns as its block exits, pointing at the ``with`` statement that opened it.
 
    .. code-block:: text

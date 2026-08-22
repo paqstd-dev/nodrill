@@ -18,6 +18,18 @@ def _describe_key(key: Any) -> str:
     return repr(key) if isinstance(key, str) else getattr(key, "__qualname__", repr(key))
 
 
+def _key_path(key: _Key) -> str:
+    """Render a key the way ref() spells one, so two same-named classes stay apart.
+
+    _describe_key renders a bare qualname, which reads well in a message and
+    is ambiguous in a file that is diffed, since two Config classes in two
+    modules render identically.
+    """
+    if isinstance(key, str):
+        return repr(key)
+    return f"{key.__module__}:{key.__qualname__}"
+
+
 def _rebuilt(
     cls: type[BaseException], args: tuple[Any, ...], state: dict[str, Any]
 ) -> BaseException:

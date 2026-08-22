@@ -527,6 +527,16 @@ class TestUnusedProviders:
         [record] = records
         assert record.lineno == layered
 
+    def test_a_layer_over_nothing_credits_no_one(self) -> None:
+        """extend=True over a name nothing provided has no outer namespace to read."""
+        with pytest.warns(UnusedProviderWarning, match="never read") as records, debug(unused=True):
+            with provider("db", dsn="x"):
+                use("db")
+                with provider("app", extend=True, tag="x"):
+                    opened = line_above()
+        [record] = records
+        assert record.lineno == opened
+
     def test_a_block_that_raised_is_not_warned_about(self) -> None:
         """A body that blew up never had the chance to read, so it is not blamed for it."""
         with debug(unused=True):

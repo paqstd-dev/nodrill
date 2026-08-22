@@ -463,7 +463,50 @@ That base is also how ``_lazy`` sees through a view to its target when it checks
 ``_debug`` is instrumentation rather than registry, and sits beside ``_core`` because nothing on a successful lookup reads it.
 ``_report`` is reporting rather than registry, sharing with ``_core`` only the value a provider is holding, and nothing in it runs until an exception is already leaving a block.
 ``_inject``, ``_concurrency`` and ``_errors`` are the remaining features.
+``_audit`` is the contract tool, which reads the table the ledger fills and is imported by nothing in the core, so a process that never audits never loads it.
+``__main__`` is two lines of dispatch under it, which is the whole command line surface.
 Nothing under ``nodrill._*`` is public.
+
+
+The contract recorder
+---------------------
+
+Recording what each entry point reads is the second reader of a trick the ledger already uses.
+Read counting installs a ``dict`` subclass as the registry rather than branching in ``use()``, and the recorder rides the same subclass, so a lookup pays nothing for either feature when neither is on.
+
+That choice was forced rather than preferred.
+A compiled :func:`~nodrill.inject` wrapper binds its registry accessor at decoration, so patching a module afterwards does not reach it, and swapping ``use`` or installing a pytest plugin would record every plain lookup and none of the injected ones.
+Emitting a recording branch from the codegen instead would make an enabled and a disabled wrapper two different compiled artefacts, which is the one thing the wrapper's design does not allow.
+The wrapper's registry read is a subscript inside a ``try`` for the same reason it is fast, and that spelling is now load-bearing twice over, since a read through ``get`` is deliberately not recorded.
+
+An entry point is the key of a provider block with no block open above it, or of one that ``NODRILL_CONTRACT_ENTRY`` names.
+The first rule alone was the original design and it does not survive contact with an ordinary application.
+Anything opened above the boundaries becomes the entry point for everything beneath it, so a service that opens configuration or a database handle in its main function gets one entry point and a file that distinguishes nothing.
+Naming the boundaries is therefore not a refinement, it is what makes the first column mean anything, and it is a variable rather than a ``provider()`` keyword because a sixth reserved name on a released function cannot be taken back and a variable can.
+
+Outermost is read off the chain of open blocks, not off the kind of mapping a block inherited.
+The difference matters because a block closing out of order leaves a repaired mapping that outlives its own chain, and asking "was the mapping I inherited an instrumented one" would hand that dead mapping's label to the next boundary that opened.
+The chain is already computed one line further down in the same method, so the correct rule is also the cheaper one.
+
+The label travels on the registry, which is what makes it survive a task, a wrapped thread and a repair, and the repair carries it for the same reason it carries the counting table.
+
+A consumer read is a subscript.
+:func:`~nodrill.use` and the compiled wrapper both read the registry with ``[]``, and everything the library does to a registry for its own reasons, the open chain, an ``extend=True`` merge and the out-of-order repair, reads it with ``get``, so the recorder can tell a read that a user wrote from a read that the library did without being told which is which.
+The instrumented registry also sees what a caller passed rather than what the registry stores, so a :func:`~nodrill.ref` arrives unresolved and is resolved before it is recorded.
+
+The recorder sits above the defaults probe in the miss path rather than on the raise.
+A :func:`~nodrill.set_default` factory and a ``use(key, default=...)`` both return before anything reports a miss, so a lookup that a registration is quietly answering is invisible to anything watching for the error, and that lookup is the one the whole feature exists to surface.
+It is also why a miss the registrations do not answer is left out of the file entirely, since an exception reaching a traceback needs no artefact to be noticed.
+
+The file is three tab-separated fields, sorted, and carries no file names and no line numbers.
+A site moves whenever anything above it moves, so a contract carrying sites churns on every pull request and stops being read, and sites belong in a failure message where the audience is different.
+A tab rather than aligned columns, because padding means one long key rewrites every line, and rather than two spaces, because ``repr`` escapes a tab and a newline but not a space, so a key holding two spaces in a row would otherwise split into more fields than the format has.
+The verb carries the whole answer, ``requires`` or ``set_default`` or ``default``, rather than a fourth column, so every line is the same shape and a reviewer greps for what is not ``requires``.
+
+The switch is an environment variable read once at import, because a child interpreter inherits one.
+That is what makes a suite that spawns subprocesses, runs under ``xdist`` or uses a process pool record without a special case for any of them.
+A pool worker needs one more thing, since :mod:`multiprocessing` exits a worker through :func:`os._exit`, which runs finalizers and never :mod:`atexit`, so the dump is registered both ways and made idempotent rather than registered once and lost.
+Each process of a run shares a run id minted at arming and written back into the environment, so a directory reused by a later run yields the newer contract rather than the union of both.
 
 isolate()
 ---------

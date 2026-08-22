@@ -15,7 +15,14 @@ from types import MappingProxyType, TracebackType
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, overload
 
 from ._ambient import _ambient
-from ._debug import _diagnose, _record_enter, _record_exit, _recount, _user_site
+from ._debug import (
+    _diagnose,
+    _record_enter,
+    _record_exit,
+    _record_fallback,
+    _reinstrument,
+    _user_site,
+)
 from ._debug import _state as _debug_state
 from ._declare import _expected_at, _fired, _note_fallback, _pending
 from ._declare import _restore as _restore_declared
@@ -116,12 +123,13 @@ def _repaired(
     for open_block in reversed(chain):
         entered = open_block._entered  # noqa: SLF001
         if open_block is not leaving and entered is not None and open_block._key == key:  # noqa: SLF001
-            repaired[key] = entered[key]
+            # Read with get, since a subscript is what the audit counts as a consumer read.
+            repaired[key] = entered.get(key)
             break
     else:
         repaired.pop(key, None)
     repaired[_Open] = tuple(block for block in chain if block is not leaving)
-    return _recount(repaired, current)
+    return _reinstrument(repaired, current)
 
 
 class _Provider(Generic[T]):
@@ -178,10 +186,11 @@ class _Provider(Generic[T]):
         enclosing = _registry_get()
         updated = dict(enclosing)
         updated[self._key] = public
-        if _debug_state.recording:
-            self._block, updated = _record_enter(self._key, enclosing, updated)
+        chain = enclosing.get(_Open, ())
+        if _debug_state.watching:
+            self._block, updated = _record_enter(self._key, enclosing, updated, outermost=not chain)
         # After the ledger, so the chain lands on the mapping actually installed.
-        updated[_Open] = (*enclosing.get(_Open, ()), self)
+        updated[_Open] = (*chain, self)
         self._entered = updated
         self._token = _registry.set(updated)
         return value
@@ -418,7 +427,7 @@ class _SealedExtendingProvider(_Sealing, _ExtendingProvider):
 
 
 def _data_flag_error(name: str, value: Any) -> TypeError:
-    """Build the error for a flag handed data, naming the namespace spelling that wanted it."""
+    """Report a flag handed data, naming the namespace spelling that wanted it."""
     return TypeError(
         f"provider({name}=...) is a flag and cannot carry data, and "
         f"{value!r} would turn it on as well as vanish. For a namespace "
@@ -643,26 +652,32 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
             raise TypeError(
                 f"use() received what lazy() returned, which is a target rather than a key. "
                 f"Open it with provider(lazy({name}, factory)) and read it with use({name})"
-            )
+            ) from None
         raise TypeError(
             f"use() expects a string name or a class, got {type(target).__name__}: {target!r}"
-        )
+        ) from None
     if isinstance(target, type):
         factory = _defaults.get(target)
         if factory is not None:
             # A suspicious class pays the count, and a pending declaration one resolution check.
             if _pending or target in _fired:
                 _note_fallback(target)
+            if _debug_state.auditing:
+                _record_fallback(_registry_get(), target, "set_default")
             return factory()
     if default is not _MISSING:
+        if _debug_state.auditing:
+            _record_fallback(_registry_get(), target, "default")
         return default
     # The resolved target, since that is what a provider registered under.
     recording = _debug_state.recording
     diagnosis = _diagnose(target) if recording else None
     available = [k for k in _registry.get() if k is not _Open]
+    # from None because the @inject wrapper calls this inside its own except KeyError,
+    # where use() calls it outside one, and a caller must not see that difference.
     raise NoProviderError(
         key, available, diagnosis, provided_by=_expected_at(target), offer_debug=not recording
-    )
+    ) from None
 
 
 def active() -> Mapping[str | type[Any], Any]:

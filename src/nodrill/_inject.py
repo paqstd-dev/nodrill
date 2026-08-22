@@ -417,8 +417,10 @@ def _missing_guard_lines(label: str, missing: list[str], ns: _WrapperSpace) -> l
 def _resolve_lines(target: str, key: str, ns: _WrapperSpace, indent: str) -> list[str]:
     """Render the one lookup template, an inlined registry hit with the miss path in _core."""
     return [
-        f"{indent}{target} = {ns.registry}().get({key}, {ns.omitted})",
-        f"{indent}if {target} is {ns.omitted}:",
+        # A subscript in a try beats get() plus an identity test, since a hit skips the handler.
+        f"{indent}try:",
+        f"{indent}    {target} = {ns.registry}()[{key}]",
+        f"{indent}except KeyError:",
         f"{indent}    {target} = {ns.miss}({key})",
     ]
 

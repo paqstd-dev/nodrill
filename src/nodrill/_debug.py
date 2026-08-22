@@ -13,17 +13,20 @@ frame already sees.
 
 from __future__ import annotations
 
+import atexit
 import inspect
 import itertools
 import os
 import threading
 import warnings
+from collections.abc import MutableMapping
 from types import TracebackType
 from typing import Any, NamedTuple
 from weakref import WeakKeyDictionary
 
 from ._declare import _report_lines
-from ._errors import UnusedProviderWarning, _describe_key, _Key
+from ._errors import UnusedProviderWarning, _describe_key, _Key, _key_path
+from ._refs import _key_target
 
 _Registry = dict[_Key, Any]
 
@@ -83,15 +86,18 @@ class _State:
 
     recording and counting mirror the two depths rather than being read off
     them, since the provider path tests one of them on every block entered.
+    watching is recording or auditing, so that path still tests one thing.
     """
 
-    __slots__ = ("counting", "depth", "recording", "seq", "unused_depth")
+    __slots__ = ("auditing", "counting", "depth", "recording", "seq", "unused_depth", "watching")
 
     def __init__(self) -> None:
         self.depth = 0
         self.unused_depth = 0
         self.recording = False
         self.counting = False
+        self.auditing = False
+        self.watching = False
         self.seq = 0
 
 
@@ -105,6 +111,13 @@ _closed: dict[tuple[_Key, int, int | None], _Block] = {}
 # Keys the cap above dropped, which a miss reports as gone rather than as absent.
 _forgotten: dict[_Key, None] = {}
 
+# What the audit accumulates, uncapped and never rolled back, since a run is the unit.
+_reads: set[tuple[str, str, str]] = set()
+# The entry point of a read no provider block encloses, which only a fallback can be.
+_NO_ENTRY = "(none)"
+# Keys NODRILL_CONTRACT_ENTRY names as boundaries, which mint a label even when nested.
+_declared_entries: set[str] = set()
+
 # Serials rather than id(), which the interpreter hands on as soon as a task dies.
 _task_serials: WeakKeyDictionary[Any, int] = WeakKeyDictionary()
 _next_task_serial = itertools.count(1).__next__
@@ -113,21 +126,54 @@ _next_task_serial = itertools.count(1).__next__
 _from_env = os.environ.get("NODRILL_DEBUG", "") not in {"", "0"}
 _state.depth = 1 if _from_env else 0
 _state.recording = _from_env
+_state.watching = _from_env
 
 
-class _CountingRegistry(dict[_Key, Any]):
-    """Registry that marks which block's value a lookup read.
+def _arm(environ: MutableMapping[str, str]) -> None:
+    """Turn the audit on from the environment, and arrange for this process to write its shard.
 
-    Installed only while debug(unused=True) is on, which is what keeps read
-    counting out of use() itself.  owners maps a key to the block providing
-    it, so a read credits that block and not every block sharing the key.
+    A variable rather than a call, because a child interpreter inherits one
+    and a call would have to be made again in every process a suite spawns.
+    Takes the mapping rather than reading os.environ, so what it sets can be
+    tested without a child interpreter.
+    """
+    directory = environ.get("NODRILL_CONTRACT", "")
+    if not directory:
+        return
+    _state.auditing = True
+    _state.watching = True
+    # Deferred, so a process that never audits pays for none of the tool's imports.
+    from multiprocessing.util import Finalize  # noqa: PLC0415
+
+    from ._audit import _ENTRY_VAR, _declared, _dump, _new_run  # noqa: PLC0415
+
+    _declared_entries.update(_declared(environ.get(_ENTRY_VAR, "")))
+    run = environ.get("NODRILL_CONTRACT_RUN") or _new_run()
+    # Written back so every child joins this run rather than starting one of its own.
+    environ["NODRILL_CONTRACT_RUN"] = run
+    atexit.register(_dump, directory, run, _reads)
+    # A multiprocessing worker exits through os._exit, which runs finalizers and not atexit.
+    Finalize(None, _dump, args=(directory, run, _reads), exitpriority=0)
+
+
+_arm(os.environ)
+
+
+class _InstrumentedRegistry(dict[_Key, Any]):
+    """Registry that watches lookups, for read counting and for the audit.
+
+    Installed instead of branching in use(), which is what keeps both
+    features out of the hot path when neither is on.  owners maps a key to
+    the block providing it, so a read credits that block and not every block
+    sharing the key, and entry names the outermost block open above it.
     """
 
-    __slots__ = ("owners",)
+    __slots__ = ("entry", "owners")
 
-    def __init__(self, registry: _Registry, owners: dict[_Key, _Reads]) -> None:
+    def __init__(self, registry: _Registry, owners: dict[_Key, _Reads], entry: str) -> None:
         super().__init__(registry)
         self.owners = owners
+        self.entry = entry
 
     def _mark(self, key: _Key) -> None:
         """Note that something read the block providing key."""
@@ -135,13 +181,17 @@ class _CountingRegistry(dict[_Key, Any]):
         if reads is not None:
             reads.hit = True
 
-    def __getitem__(self, key: _Key) -> Any:
+    def __getitem__(self, key: Any) -> Any:
+        # Typed loosely because this sees what a caller passed, not what the registry stores.
         value = super().__getitem__(key)
         self._mark(key)
+        # A consumer read is a subscript, which is what leaves the chain key and a merge out.
+        if _state.auditing:
+            _reads.add((self.entry, "requires", _key_path(_key_target(key))))
         return value
 
-    def get(self, key: _Key, default: Any = None) -> Any:
-        """Return the value for key, marking the read, the way @inject reads it."""
+    def get(self, key: Any, default: Any = None) -> Any:
+        """Return the value for key, marking the read, the way an extending layer reads it."""
         value = super().get(key, _MISS)
         if value is _MISS:
             return default
@@ -149,11 +199,22 @@ class _CountingRegistry(dict[_Key, Any]):
         return value
 
 
-def _recount(registry: _Registry, replaced: _Registry) -> _Registry:
-    """Return registry as a counting one when the mapping it replaces was counting."""
-    if isinstance(replaced, _CountingRegistry):
-        return _CountingRegistry(registry, replaced.owners)
+def _reinstrument(registry: _Registry, replaced: _Registry) -> _Registry:
+    """Return registry instrumented the way the mapping it replaces was."""
+    if isinstance(replaced, _InstrumentedRegistry):
+        return _InstrumentedRegistry(registry, replaced.owners, replaced.entry)
     return registry
+
+
+def _record_fallback(registry: _Registry, key: _Key, source: str) -> None:
+    """Note a miss a registration answered, which is the read a raise would never report.
+
+    A set_default factory and a use(key, default=...) both return before
+    anything reports a miss, so a NoProviderError a registration is hiding
+    would otherwise never appear in a contract.
+    """
+    entry = registry.entry if isinstance(registry, _InstrumentedRegistry) else _NO_ENTRY
+    _reads.add((entry, source, _key_path(key)))
 
 
 def _user_site() -> tuple[_Site, int]:
@@ -197,26 +258,41 @@ def _where() -> _Where:
     return _Where(ident, name, serial, task.get_name())
 
 
-def _record_enter(key: _Key, enclosing: _Registry, registry: _Registry) -> tuple[int, _Registry]:
+def _record_enter(
+    key: _Key, enclosing: _Registry, registry: _Registry, *, outermost: bool
+) -> tuple[int | None, _Registry]:
     """Note an entered provider block, and return its handle with the registry to install.
 
-    The handle is the block's serial, which the provider holds until it exits.
-    id() would be reused by the next provider at that address.
+    The handle is the block's serial, which the provider holds until it
+    exits, and it is None when only the audit is watching, since then the
+    ledger has nothing to forget.  id() would be reused by the next provider
+    at that address.
     """
-    site, _ = _user_site()
-    where = _where()
-    reads = _Reads() if _state.counting else None
-    with _lock:
-        _state.seq += 1
-        handle = _state.seq
-        _open[handle] = _Block(key, site, where, handle, reads)
+    handle: int | None = None
+    reads: _Reads | None = None
+    if _state.recording:
+        site, _ = _user_site()
+        where = _where()
+        reads = _Reads() if _state.counting else None
+        with _lock:
+            _state.seq += 1
+            handle = _state.seq
+            _open[handle] = _Block(key, site, where, handle, reads)
     owners: dict[_Key, _Reads] = {}
-    if isinstance(enclosing, _CountingRegistry):
+    minted = _key_path(key)
+    entry = minted
+    if isinstance(enclosing, _InstrumentedRegistry):
         # Inherited whether or not counting is still on, since it is process-wide.
         owners = dict(enclosing.owners)
+        # Outermost comes from the open chain rather than from the kind of mapping inherited,
+        # since a repaired mapping outlives its chain and would hand on a label nothing owns.
+        if not outermost and minted not in _declared_entries:
+            entry = enclosing.entry
     if reads is not None:
         owners[key] = reads
-    return handle, _CountingRegistry(registry, owners) if owners else registry
+    if not owners and not _state.auditing:
+        return handle, registry
+    return handle, _InstrumentedRegistry(registry, owners, entry)
 
 
 def _remember_closed(entry: _Block) -> None:
@@ -371,6 +447,7 @@ class _DebugMode:
         with _lock:
             _state.depth += 1
             _state.recording = True
+            _state.watching = True
             if self._unused:
                 _state.unused_depth += 1
                 _state.counting = True
@@ -384,6 +461,7 @@ class _DebugMode:
         with _lock:
             _state.depth -= 1
             _state.recording = _state.depth > 0
+            _state.watching = _state.recording or _state.auditing
             if self._unused:
                 _state.unused_depth -= 1
                 _state.counting = _state.unused_depth > 0

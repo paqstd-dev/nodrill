@@ -20,6 +20,7 @@ Each one is a complete program you can paste into a file and run, with the reaso
    test-injected-code
    refer-to-a-key-you-cannot-import
    find-out-why-the-context-is-missing
+   record-what-a-handler-reads
    see-the-context-in-a-traceback
    add-context-to-every-log-record
    replace-a-contextvar
