@@ -24,7 +24,7 @@ from ._portable import adopt, export, set_codec
 from ._refs import ref, resolve_refs
 from ._report import annotate_exceptions
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 """The installed version, as a string."""
 
 __all__ = [
