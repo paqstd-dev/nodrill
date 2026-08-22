@@ -9,6 +9,7 @@ from ._ambient import context
 from ._concurrency import Executor, wrap
 from ._core import Namespace, active, isolate, provider, set_default, use
 from ._debug import debug, explain
+from ._declare import Declaration, declare, keys
 from ._errors import (
     EnvelopeVersionError,
     ExpiredScopeError,
@@ -28,6 +29,7 @@ __version__ = "0.4.0"
 """The installed version, as a string."""
 
 __all__ = [
+    "Declaration",
     "EnvelopeVersionError",
     "Executor",
     "ExpiredScopeError",
@@ -44,12 +46,14 @@ __all__ = [
     "annotate_exceptions",
     "context",
     "debug",
+    "declare",
     "explain",
     "export",
     "from_ctx",
     "inject",
     "injected",
     "isolate",
+    "keys",
     "lazy",
     "provider",
     "ref",

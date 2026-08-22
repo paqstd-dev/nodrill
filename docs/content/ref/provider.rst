@@ -382,6 +382,8 @@ set_default
 
    :func:`isolate` rolls back registrations made inside its block, and leaves pre-existing ones visible.
 
+   A class declared with ``fallback="suspicious"`` has every firing of its factory counted, and :func:`explain` reports the count, which is covered under :ref:`ref-declaring`.
+
 active
 ------
 

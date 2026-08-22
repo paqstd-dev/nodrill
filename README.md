@@ -58,6 +58,7 @@ Tasks inherit the context, `wrap` and `Executor` carry it into threads, and `set
 Past the edge of the process, where nothing can be carried by reference, `export("trace")` renders the providers you name as a plain dict that JSON holds and `adopt(payload)` opens them again in the worker.
 
 When it goes wrong, `debug()` turns a miss into a diagnosis naming the thread, the task and the line the provider is open on, and `annotate_exceptions()` puts the scope on the traceback.
+`declare()` records what a key is for and which boundaries provide it, so a miss names the boundary that forgot its provider, `keys()` lists every declared key, and a `set_default` fallback declared suspicious reports how often it carried the traffic.
 `isolate()` gives a test fresh context state and rolls it back afterwards.
 Everything above is importable from the top-level package, and there is nothing else to import.
 

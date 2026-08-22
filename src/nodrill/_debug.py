@@ -22,6 +22,7 @@ from types import TracebackType
 from typing import Any, NamedTuple
 from weakref import WeakKeyDictionary
 
+from ._declare import _report_lines
 from ._errors import UnusedProviderWarning, _describe_key, _Key
 
 _Registry = dict[_Key, Any]
@@ -422,15 +423,15 @@ def explain() -> str:
     Written for a breakpoint, as print(nodrill.explain()).  Blocks opened
     on other threads and in other tasks are listed too, which is the reason
     to read this rather than active(), and the reader's own thread comes
-    first with its own blocks innermost first.  The codec is named above
-    them, since nothing else in the process reports which halves are
-    registered.
+    first with its own blocks innermost first.  The codec and any suspicious
+    fallback that has fired are named above them, since nothing else in the
+    process reports either.
     """
-    codec = _codec_lines()
+    heading = [*_codec_lines(), *_report_lines()]
     if not _state.recording:
         return "\n".join(
             [
-                *codec,
+                *heading,
                 "nodrill debug mode is off, so no provider block is recorded.",
                 (
                     "Turn it on with `with nodrill.debug():` or with NODRILL_DEBUG=1 "
@@ -441,9 +442,9 @@ def explain() -> str:
     here = _where()
     blocks = sorted(_open.copy().values(), key=lambda entry: _listing(entry, here))
     if not blocks:
-        return "\n".join([*codec, "nodrill debug: no provider block is open."])
+        return "\n".join([*heading, "nodrill debug: no provider block is open."])
     counted = f"{len(blocks)} provider block{'' if len(blocks) == 1 else 's'}"
-    lines = [*codec, f"nodrill debug: {counted} open, innermost first within each thread."]
+    lines = [*heading, f"nodrill debug: {counted} open, innermost first within each thread."]
     lines += [
         f"  {_describe_key(entry.key)} opened at {entry.site.file}:{entry.site.line}, "
         f"{_on(entry.where)}"

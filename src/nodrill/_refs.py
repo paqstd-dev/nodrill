@@ -40,6 +40,21 @@ _created: list[weakref.ref[_Ref]] = []
 _imported: list[weakref.ref[_Ref]] = []
 
 
+class _Resolutions:
+    """A count of successful fills, so a pending-declaration scan can skip.
+
+    Mutated in place and never rebound, since _declare binds the object.
+    """
+
+    __slots__ = ("count",)
+
+    def __init__(self) -> None:
+        self.count = 0
+
+
+_resolutions = _Resolutions()
+
+
 class _Ref:
     """A key that names its target by import path and resolves on first use.
 
@@ -70,6 +85,8 @@ class _Ref:
         import that was in flight completes.
         """
         target = self._target = _locate(self._path)
+        # A racing double fill bumps twice, which only costs one spare rescan.
+        _resolutions.count += 1
         return target
 
     def __hash__(self) -> int:

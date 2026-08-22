@@ -17,7 +17,10 @@ from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, overload
 from ._ambient import _ambient
 from ._debug import _diagnose, _record_enter, _record_exit, _recount, _user_site
 from ._debug import _state as _debug_state
-from ._errors import NoProviderError, OrphanedProviderWarning, _describe_key
+from ._declare import _expected_at, _fired, _note_fallback, _pending
+from ._declare import _restore as _restore_declared
+from ._declare import _snapshot as _snapshot_declared
+from ._errors import _KEY_TYPES, NoProviderError, OrphanedProviderWarning, _describe_key
 from ._frozen import _FrozenProxy
 from ._lazy import _is_lazy, _Lazy, _LazyCell, _Resolution
 from ._refs import _is_ref, _key_target, _restore, _snapshot
@@ -48,10 +51,6 @@ class _Open:
     type keys, and private, so no lookup can name it.  The two places that
     iterate the registry filter it out.
     """
-
-
-# A tuple rather than `str | type`, which would allocate a UnionType on every evaluation.
-_KEY_TYPES = (str, type)
 
 
 class Namespace:
@@ -640,6 +639,9 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
     if isinstance(target, type):
         factory = _defaults.get(target)
         if factory is not None:
+            # A suspicious class pays the count, and a pending declaration one resolution check.
+            if _pending or target in _fired:
+                _note_fallback(target)
             return factory()
     if default is not _MISSING:
         return default
@@ -647,7 +649,9 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
     recording = _debug_state.recording
     diagnosis = _diagnose(target) if recording else None
     available = [k for k in _registry.get() if k is not _Open]
-    raise NoProviderError(key, available, diagnosis, offer_debug=not recording)
+    raise NoProviderError(
+        key, available, diagnosis, provided_by=_expected_at(target), offer_debug=not recording
+    )
 
 
 def active() -> Mapping[str | type[Any], Any]:
@@ -695,19 +699,21 @@ def isolate() -> Iterator[None]:
     """Run a block against fresh context state, restoring the outer state on exit.
 
     Providers and ambient attributes start empty.  Any set_default()
-    registration made inside is rolled back, and so is any ref() the block
-    itself created, which is what keeps one test's broken path out of another
-    test's resolve_refs().  A ref a module made while the block imported it
-    belongs to that module and stays, since the module does.  Meant for test
-    fixtures.
+    registration or declare() call made inside is rolled back, and so is any
+    ref() the block itself created, which is what keeps one test's broken
+    path out of another test's resolve_refs().  A ref or a declaration a
+    module made while the block imported it belongs to that module and
+    stays, since the module does.  Meant for test fixtures.
     """
     registry_token = _registry.set({})
     ambient_token = _ambient.set({})
     saved_defaults = dict(_defaults)
     saved_refs = _snapshot()
+    saved_declared = _snapshot_declared()
     try:
         yield
     finally:
+        _restore_declared(saved_declared)
         _restore(saved_refs)
         _defaults.clear()
         _defaults.update(saved_defaults)

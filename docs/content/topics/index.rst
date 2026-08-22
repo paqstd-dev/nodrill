@@ -13,6 +13,7 @@ Read them in order for a complete picture of the library, or jump to the one you
    providers
    typed-contexts
    defaults
+   declaring
    ambient
    injection
    concurrency

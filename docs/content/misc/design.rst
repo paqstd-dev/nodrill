@@ -58,7 +58,9 @@ The factory runs on every miss rather than caching its first result, since a cac
 A registered factory wins over the call-site default, because registration declares the canonical fallback for the class, while the call-site default only says what this one caller can live with.
 
 The defaults table itself is a module-level dict of factories written at import time.
-That is configuration rather than flowing state, and state lives only in ContextVars, with the three further exceptions argued for below.
+The :func:`~nodrill.declare` catalogue is a second table of exactly that kind, written at import time and read only on a miss.
+Both are configuration rather than flowing state, and state lives only in ContextVars, with the further exceptions argued for below.
+The suspicious-fallback counter beside the catalogue is instrumentation under the ledger's rules, written on the fallback path and reported by :func:`~nodrill.explain`.
 
 The ambient context object
 --------------------------
