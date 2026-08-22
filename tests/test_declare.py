@@ -73,10 +73,18 @@ class TestDeclareForms:
 
 
 class TestDeclareValidation:
-    def test_an_instance_is_rejected(self) -> None:
-        """A key must be a string, a class or a ref."""
-        with pytest.raises(TypeError, match="expects a string name, a class, or a ref"):
-            declare(Origin())  # type: ignore[call-overload]  # pyright: ignore[reportArgumentType]
+    @pytest.mark.parametrize(
+        ("key", "match"),
+        [
+            (Origin(), "expects a string name, a class, or a ref"),
+            (None, "got NoneType"),
+        ],
+        ids=["instance", "explicit-none"],
+    )
+    def test_a_bad_key_kind_is_rejected(self, key: Any, match: str) -> None:
+        """A key is a string, a class or a ref, and an explicit None is a mistake to report."""
+        with pytest.raises(TypeError, match=match):
+            declare(key)
 
     def test_a_non_string_doc_is_rejected(self) -> None:
         """A doc carries prose or nothing."""
@@ -93,25 +101,19 @@ class TestDeclareValidation:
         with pytest.raises(TypeError, match="applies to class keys"):
             declare("audit", fallback="suspicious")  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue]
 
-    def test_a_non_string_boundary_is_rejected(self) -> None:
-        """Every entry of provided_by names a boundary as a string."""
-        with pytest.raises(TypeError, match=r"provided_by=\.\.\.\) expects strings"):
-            declare(Origin, provided_by=("http middleware", 3))  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
-
-    def test_a_blank_boundary_is_rejected(self) -> None:
-        """An empty boundary would render a sentence naming nothing."""
-        with pytest.raises(TypeError, match="names nothing"):
-            declare(Origin, provided_by="")
-
-    def test_an_explicit_none_is_rejected(self) -> None:
-        """declare(None) is a mistake to report, not the decorator form."""
-        with pytest.raises(TypeError, match="got NoneType"):
-            declare(None)  # type: ignore[call-overload]  # pyright: ignore[reportArgumentType]
-
-    def test_a_scalar_provided_by_is_rejected_with_the_crafted_message(self) -> None:
-        """A non-iterable provided_by gets the declare() wording, not tuple()'s."""
-        with pytest.raises(TypeError, match=r"provided_by=\.\.\.\) expects strings"):
-            declare(Origin, provided_by=5)  # type: ignore[call-overload]  # pyright: ignore[reportArgumentType]
+    @pytest.mark.parametrize(
+        ("provided_by", "match"),
+        [
+            (("http middleware", 3), r"provided_by=\.\.\.\) expects strings"),
+            (5, r"provided_by=\.\.\.\) expects strings"),
+            ("", "names nothing"),
+        ],
+        ids=["non-string-entry", "scalar", "blank"],
+    )
+    def test_a_bad_provided_by_is_rejected(self, provided_by: Any, match: str) -> None:
+        """Every boundary is a non-blank string, and a scalar gets declare()'s own wording."""
+        with pytest.raises(TypeError, match=match):
+            declare(Origin, provided_by=provided_by)
 
     def test_the_decorator_form_validates_eagerly(self) -> None:
         """A typo is reported at the declare() call, not at some later application."""
