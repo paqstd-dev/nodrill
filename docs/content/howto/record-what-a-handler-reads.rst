@@ -118,28 +118,9 @@ A boundary that opened and read nothing is a row of the file rather than that me
 Reading the file
 ----------------
 
-Three tab-separated fields, sorted, one fact per line.
-The first is the entry point, the second is how the read was answered, the third is the key, rendered the way :func:`~nodrill.ref` spells one so two same-named classes in different modules stay apart.
-A string key keeps the quotes Python puts on it, which is also what keeps a key holding a tab or a newline from becoming two lines.
-
 The second field is the one to read.
-
-`requires`
-   A provider answered, which is the ordinary case.
-
-`set_default`
-   No provider was open and a :func:`~nodrill.set_default` factory answered instead.
-   Every one of these is a boundary that does not open a key somebody registered a fallback for.
-
-`default`
-   No provider was open and the ``use(key, default=...)`` at the call site answered.
-
-`opened`
-   A boundary you named opened and nothing under it read the context, so the third field is `nothing` rather than a key.
-   It is what keeps a handler that reads nothing apart from a boundary the run never reached.
-
-An entry point of `(none)` means no provider block was open at all, which a read can only survive by falling back.
-It is what an unwrapped worker thread looks like, and what a read at import time looks like.
+A `requires` row is a provider answering, and a `set_default` or a `default` row is a key the boundary never opened, which is the row this file exists for.
+:ref:`ref-contract-file` has the whole vocabulary, the entry point `(none)` among it.
 
 Wiring it into CI
 -----------------

@@ -99,7 +99,36 @@ Setting it yourself is how a runner that starts its workers directly, such as ``
 It returns ``0`` when it rendered a contract and ``1`` when it could not, leaving ``2`` to mean the command line itself was wrong.
 A shard it cannot read is a message and the exit code, never a traceback, and ``python -m nodrill --version`` says which nodrill is reading.
 
-:doc:`/content/howto/record-what-a-handler-reads` is the task-shaped version, with the file format and what it is worth.
+:doc:`/content/howto/record-what-a-handler-reads` is the task-shaped version, with a program to run and what the file is worth.
+
+.. _ref-contract-file:
+
+The contract file
+~~~~~~~~~~~~~~~~~
+
+A shard and a rendered contract carry one format, ``# nodrill contract 1`` on the first line and one fact per line under it, sorted, UTF-8 with ``\n`` endings whatever the platform.
+A reader refuses a first line it does not know rather than guessing at it, so a file a later version wrote is a message and an exit code.
+
+A fact is three tab-separated fields, the entry point, the verb, and the key.
+The entry point and the key are both rendered the way :func:`~nodrill.ref` spells one, ``myapp.web:Request`` for a class and ``'http request'`` for a string, quotes included, which is also what keeps a key holding a tab or a newline on one line.
+
+The verb says how the read was answered.
+
+``requires``
+   A provider answered, which is the ordinary case.
+
+``set_default``
+   No provider was open and a :func:`~nodrill.set_default` factory answered instead.
+   Every one of these is a boundary that leaves a key to a fallback.
+
+``default``
+   No provider was open and the ``use(key, default=...)`` at the call site answered.
+
+``opened``
+   A boundary ``NODRILL_CONTRACT_ENTRY`` names opened and nothing under it read the context, so the third field is the word ``nothing`` rather than a key.
+   It is dropped again as soon as that boundary has a read of its own, and it is what keeps a handler that reads nothing apart from a boundary the run never reached.
+
+An entry point of ``(none)`` is a read with no provider block open above it at all, which only a fallback survives, so an unwrapped worker thread and a read at import time both land there.
 
 explain
 -------
