@@ -113,6 +113,7 @@ The two boundaries read the same three keys, except that the queue never opens `
 That is a bug the code cannot show you and no test fails on, and it is one line of a diff.
 
 Pass the same value to the command, so it can tell you about a boundary you named that no block opened, which is what a renamed key looks like.
+A boundary that opened and read nothing is a row of the file rather than that message, so the two cases stay apart.
 
 Reading the file
 ----------------
@@ -132,6 +133,10 @@ The second field is the one to read.
 
 `default`
    No provider was open and the ``use(key, default=...)`` at the call site answered.
+
+`opened`
+   A boundary you named opened and nothing under it read the context, so the third field is `nothing` rather than a key.
+   It is written only for a boundary that read nothing, which is what keeps a handler reading nothing apart from a boundary the run never reached.
 
 An entry point of `(none)` means no provider block was open at all, which a read can only survive by falling back.
 It is what an unwrapped worker thread looks like, and what a read at import time looks like.
@@ -156,6 +161,7 @@ The contract file has to be committed for the third step to compare anything, si
 
 Recording is off unless ``NODRILL_CONTRACT`` is set, and the variable is read once when `nodrill` is imported, which is also why a subprocess your suite spawns records too.
 Each process writes its own file into the directory and the command merges them, so a suite that shells out or one using a :class:`~concurrent.futures.ProcessPoolExecutor` needs nothing extra.
+The directory is resolved once and written back into the environment, so a relative ``.nodrill`` means the same place to a child your suite starts in another directory.
 A directory reused by a later run is not a problem either, since every process of one run shares a run id and the command reads the newest run and says how many older files it left out.
 
 A run id is inherited through the environment, so processes of one run share it only when the process that started them imported `nodrill` itself.

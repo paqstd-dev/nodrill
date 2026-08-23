@@ -78,7 +78,7 @@ Recording a contract
 ``NODRILL_CONTRACT`` names a directory and turns on recording of what each entry point reads.
 It is read once, at import, like ``NODRILL_DEBUG``, and any non-empty value is a directory rather than a switch, so ``0`` names a directory called ``0``.
 Every process of a run writes its own file there, including one a suite spawns, and the files are merged when the contract is rendered.
-A relative directory is resolved when the variable is read, so a program that changes directory still writes where it was armed.
+A relative directory is resolved when the variable is read, and the resolved directory is written back into the environment, so a program that changes directory and a child that starts in another one both write where the run was armed.
 Recording puts an instrumented registry in front of every read, at the same cost ``unused=True`` pays, so it belongs in a suite rather than in production.
 
 ``NODRILL_CONTRACT_ENTRY`` names the provider keys that are boundaries, as rendered keys separated by commas, so ``"'http request',myapp.web:Request"``.

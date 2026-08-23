@@ -512,13 +512,16 @@ The file is three tab-separated fields, sorted, and carries no file names and no
 A site moves whenever anything above it moves, so a contract carrying sites churns on every pull request and stops being read, and sites belong in a failure message where the audience is different.
 A tab rather than aligned columns, because padding means one long key rewrites every line, and rather than two spaces, because ``repr`` escapes a tab and a newline but not a space, so a key holding two spaces in a row would otherwise split into more fields than the format has.
 The verb carries the whole answer, ``requires`` or ``set_default`` or ``default``, rather than a fourth column, so every line is the same shape and a reviewer greps for what is not ``requires``.
+A fourth verb, ``opened``, is written when a declared boundary opened and read nothing, and it is dropped again from the rendered contract as soon as that boundary has a read of its own.
+Without it the tool would have to infer that a boundary never ran from the absence of its reads, and it would tell a handler that reads nothing that its key had been renamed, on every run and forever.
 
 The switch is an environment variable read once at import, because a child interpreter inherits one.
 That is what makes a suite that spawns subprocesses, runs under ``xdist`` or uses a process pool record without a special case for any of them.
 A pool worker needs two more things.
 :mod:`multiprocessing` exits a worker through :func:`os._exit`, which runs finalizers and never :mod:`atexit`, so the dump is registered both ways and made idempotent rather than registered once and lost.
 A fork then clears the finalizer registry before the worker body runs, so the child registers the finalizer again from an after-fork hook, which is the one callback :mod:`multiprocessing` runs after that clear.
-The directory is resolved to an absolute path when the variable is read, since the hooks run at exit and a program that changed directory would otherwise write somewhere nobody looks.
+The directory is resolved to an absolute path when the variable is read, and the resolved path is written back over the variable beside the run id, since the hooks run at exit and a relative directory otherwise names one place to the process that was armed and another to a child that starts somewhere else.
+A child recording beside itself is a whole boundary of the contract landing where nothing renders it, which the merge cannot report because it never sees the file.
 Each process of a run shares a run id minted at arming and written back into the environment, so a directory reused by a later run yields the newer contract rather than the union of both.
 That inheritance works through the environment, so it reaches a child and not a sibling started by a runner that never imported the library, which is why the variable can also be set from outside.
 

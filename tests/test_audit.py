@@ -28,6 +28,7 @@ from nodrill._audit import (
     _render,
     _summary,
     _unseen,
+    _visible,
     main,
 )
 from nodrill._debug import _arm, _declared_entries, _reads, _recording, _state
@@ -83,7 +84,7 @@ def armed(recording: set[tuple[str, str, str]]) -> Iterator[list[tuple[Any, ...]
 
 def _facts(reads: set[tuple[str, str, str]]) -> set[str]:
     """Render what was recorded the way the contract file does, minus the header."""
-    return {line for line in _render(reads).splitlines() if line != HEADER}
+    return {line for line in _render(_visible(reads)).splitlines() if line != HEADER}
 
 
 def _entries(reads: set[tuple[str, str, str]]) -> set[str]:
@@ -238,6 +239,26 @@ class TestTheCollapseAndTheDeclaration:
         message = _unseen(reads, frozenset({"'http request'", "'celery worker'"}))
         assert message is not None
         assert "no block opened 'celery worker'" in message
+
+    def test_a_declared_boundary_that_reads_nothing_is_recorded_as_opened(
+        self, declaring: Any
+    ) -> None:
+        """A handler that reads nothing must not read as a boundary a rename took away."""
+        with running(), provider("celery worker"):
+            pass
+        assert f"'celery worker'{TAB}opened{TAB}nothing" in _facts(declaring)
+        assert _unseen(declaring, frozenset({"'celery worker'"})) is None
+
+    def test_the_opened_row_is_dropped_where_a_read_says_more(self) -> None:
+        reads = {
+            ("'http request'", "opened", "nothing"),
+            ("'http request'", "requires", "x"),
+            ("'celery worker'", "opened", "nothing"),
+        }
+        assert _visible(reads) == {
+            ("'http request'", "requires", "x"),
+            ("'celery worker'", "opened", "nothing"),
+        }
 
     @pytest.mark.parametrize(
         ("value", "expected"),
@@ -408,6 +429,15 @@ class TestTheSwitch:
         armed.clear()
         after_fork(None)
         assert [name for name, _ in armed] == ["finalize"]
+
+    def test_a_child_that_starts_elsewhere_records_where_the_parent_did(
+        self, tmp_path: Path, armed: list[tuple[Any, ...]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A relative directory names one place to the parent and another to a child that moved."""
+        monkeypatch.chdir(tmp_path)
+        environ = {"NODRILL_CONTRACT": ".nodrill"}
+        _arm(environ)
+        assert environ["NODRILL_CONTRACT"] == str((tmp_path / ".nodrill").resolve())
 
     def test_a_relative_directory_is_resolved_while_the_program_is_still_there(
         self, tmp_path: Path, armed: list[tuple[Any, ...]], monkeypatch: pytest.MonkeyPatch
@@ -625,6 +655,15 @@ class TestTheCommandLine:
         assert _contract(str(tmp_path), None, frozenset({"'b'"})) == 0
         assert "no block opened 'b'" in capsys.readouterr().err
 
+    def test_a_boundary_that_opened_and_read_nothing_is_a_row_and_not_a_diagnostic(
+        self, tmp_path: Path, capsys: Any
+    ) -> None:
+        _dump(str(tmp_path), "run", {("'a'", "requires", "x"), ("'b'", "opened", "nothing")})
+        assert _contract(str(tmp_path), None, frozenset({"'a'", "'b'"})) == 0
+        captured = capsys.readouterr()
+        assert f"'b'{TAB}opened{TAB}nothing" in captured.out
+        assert "no block opened" not in captured.err
+
     def test_write_names_the_file(self, tmp_path: Path, capsys: Any) -> None:
         _dump(str(tmp_path), "run", {("'a'", "requires", "x")})
         target = tmp_path / "nodrill.contract"
@@ -658,14 +697,16 @@ class TestTheCommandLine:
         assert capsys.readouterr().out.strip() == f"nodrill {nodrill.__version__}"
 
 
-def _child(program: str, directory: Path, entries: str = "") -> subprocess.CompletedProcess[str]:
+def _child(
+    program: str, directory: Path, entries: str = "", cwd: Path = _ROOT
+) -> subprocess.CompletedProcess[str]:
     """Run a program in a child interpreter with the recorder armed."""
     return subprocess.run(  # the interpreter running this suite, with a program written above
         [sys.executable, "-c", program],
         check=True,
         capture_output=True,
         text=True,
-        cwd=str(_ROOT),
+        cwd=str(cwd),
         env={
             **os.environ,
             "NODRILL_CONTRACT": str(directory),
@@ -706,6 +747,26 @@ class TestARecordedRun:
         reads, shards, stale = _merge(tmp_path)
         assert (shards, stale) == (2, 0)
         assert f"'celery worker'{TAB}set_default{TAB}{APP}:Origin" in _render(reads)
+
+    def test_a_subprocess_that_moves_still_records_into_the_same_directory(
+        self, tmp_path: Path
+    ) -> None:
+        """A relative directory is the whole point of the variable being resolved once."""
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        program = (
+            "import subprocess, sys\n"
+            f"from {APP} import running, serve_http\n"
+            "with running(): serve_http('ada')\n"
+            "subprocess.run([sys.executable, '-c',"
+            f" 'from {APP} import run_job; run_job(\"grace\")'],"
+            f" check=True, cwd={str(elsewhere)!r})\n"
+        )
+        _child(program, Path(".nodrill"), cwd=tmp_path)
+        assert not (elsewhere / ".nodrill").exists()
+        reads, shards, stale = _merge(tmp_path / ".nodrill")
+        assert (shards, stale) == (2, 0)
+        assert f"'celery worker'{TAB}requires{TAB}{APP}:User" in _render(reads)
 
     def test_a_process_pool_worker_records_its_own_shard(self, tmp_path: Path) -> None:
         """A worker exits through os._exit, which runs finalizers and never atexit."""

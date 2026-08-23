@@ -32,8 +32,10 @@ _GAP = "\t"
 # Written and diffed on machines nobody here chose, so nothing about the bytes is the platform's.
 _ENCODING = "utf-8"
 _NEWLINE = "\n"
+# The one verb this file compares against, since the render drops it where a read says more.
+_OPENED = "opened"
 # The vocabulary a fact is written in, which _parse refuses a line outside of.
-_VERBS = frozenset({"requires", "set_default", "default"})
+_VERBS = frozenset({"requires", "set_default", "default", _OPENED})
 # Owned here with the file, unlike NODRILL_CONTRACT, which gates this import and lives in _debug.
 _ENTRY_VAR = "NODRILL_CONTRACT_ENTRY"
 _RUN_VAR = "NODRILL_CONTRACT_RUN"
@@ -57,6 +59,16 @@ def _render(reads: _Reads) -> str:
     """Render a contract, sorted so the file is a property of the run and not of its order."""
     lines = [_HEADER, *(_GAP.join(read) for read in sorted(reads))]
     return "".join(f"{line}{_NEWLINE}" for line in lines)
+
+
+def _visible(reads: _Reads) -> _Reads:
+    """Drop the opened row of a boundary that went on to read, since its reads already say so.
+
+    What survives is the boundary a run opened and read nothing under, which
+    is a fact about that entry point and not the absence of one.
+    """
+    read = {entry for entry, verb, _ in reads if verb != _OPENED}
+    return {fact for fact in reads if fact[1] != _OPENED or fact[0] not in read}
 
 
 def _refuse(source: str, saw: str, expected: str) -> ValueError:
@@ -151,7 +163,11 @@ def _summary(reads: _Reads, shards: int, stale: int) -> str:
 
 
 def _unseen(reads: _Reads, declared: frozenset[str]) -> str | None:
-    """Report a declared entry point no block opened, since a renamed key would go quiet."""
+    """Report a declared entry point no block opened, since a renamed key would go quiet.
+
+    Read off the whole run rather than off the rendered contract, because a
+    boundary that opened and read nothing is recorded and not rendered.
+    """
     missing = sorted(declared - {entry for entry, _, _ in reads})
     if not missing:
         return None
@@ -180,7 +196,8 @@ def _contract(source: str, target: str | None, declared: frozenset[str]) -> int:
             f"Run the suite with NODRILL_CONTRACT={source} first"
         )
         return 1
-    text = _render(reads)
+    facts = _visible(reads)
+    text = _render(facts)
     if target is None:
         # Through the buffer, so neither the locale nor the platform edits the artefact.
         sys.stdout.flush()
@@ -192,7 +209,7 @@ def _contract(source: str, target: str | None, declared: frozenset[str]) -> int:
         except OSError as error:
             _say(f"nodrill: cannot write {target}, {error.strerror}")
             return 1
-    _say(_summary(reads, shards, stale))
+    _say(_summary(facts, shards, stale))
     unseen = _unseen(reads, declared)
     if unseen is not None:
         _say(unseen)

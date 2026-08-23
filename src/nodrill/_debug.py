@@ -199,6 +199,8 @@ def _arm(environ: MutableMapping[str, str]) -> None:
 
     # Resolved now, since the hooks below run at exit and a program may have moved by then.
     directory = str(Path(directory).resolve())
+    # Written back too, so a child that starts elsewhere records here and not beside itself.
+    environ["NODRILL_CONTRACT"] = directory
     _declared_entries.update(_declared(environ.get(_ENTRY_VAR, "")))
     run = environ.get(_RUN_VAR) or _new_run()
     # Written back so every child joins this run rather than starting one of its own.
@@ -384,6 +386,9 @@ def _record_enter(
     owners: dict[_Key, _Reads] = {}
     # Only the audit reads a label, and rendering a key is not free on the block path.
     entry = _key_path(key) if _state.auditing else _NO_ENTRY
+    # Noted on the open, so a boundary that reads nothing stays apart from one that never ran.
+    if _state.auditing and entry in _declared_entries:
+        _note((entry, "opened", "nothing"))
     if isinstance(enclosing, _InstrumentedRegistry):
         # Inherited whether or not counting is still on, since it is process-wide.
         owners = dict(enclosing.owners)

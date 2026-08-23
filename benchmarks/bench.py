@@ -214,7 +214,11 @@ def render(timings: Mapping[str, float]) -> str:
     base = timings[BASELINE]
     # The multiplication sign, since that is the heading the published table carries.
     header = ("operation", "ns", "×")  # noqa: RUF001
-    rows = [(label, f"{round(timings[label])}", ratio(timings[label] / base)) for label in ORDER]
+    # Divided after rounding, so the table is a function of its own ns column and a rerun settles.
+    rows = [
+        (label, f"{round(timings[label])}", ratio(round(timings[label]) / round(base)))
+        for label in ORDER
+    ]
     widths = [max(len(cell) for cell in column) for column in zip(header, *rows, strict=True)]
     rule = "  ".join("=" * width for width in widths)
 
