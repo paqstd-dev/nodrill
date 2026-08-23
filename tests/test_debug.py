@@ -191,7 +191,7 @@ class TestOpenElsewhere:
         assert f"{__file__}:{opened}" in str(error)
 
     def test_a_bare_pool_worker_is_diagnosed(self) -> None:
-        """The case the feature exists for: submitting to a pool that is not nodrill's."""
+        """The case the feature exists for, submitting to a pool that is not nodrill's."""
         with debug(), provider(Session()), ThreadPoolExecutor(max_workers=1) as pool:
             error = pool.submit(read_session).result()
         assert "which did not inherit that context" in str(error)
@@ -505,7 +505,7 @@ class TestUnusedProviders:
         assert record.lineno == opened
 
     def test_a_read_provider_is_silent(self) -> None:
-        """A provider something read is not warned about; warnings are errors here."""
+        """A provider something read is not warned about, and warnings are errors here."""
         with debug(unused=True), provider(Session()):
             use(Session)
 

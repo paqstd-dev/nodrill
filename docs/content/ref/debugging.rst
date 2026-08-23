@@ -175,7 +175,7 @@ annotate_exceptions
 
    Rendering runs the value's ``__repr__`` while the block is unwinding, which is the one place this library calls user code on an exception path.
    A ``__repr__`` that blocks on a lock the raising frame is holding blocks the unwind with it, so keep one cheap, and use ``annotate=False`` for a value whose ``__repr__`` is neither.
-   An exception that refuses the note, a frozen dataclass exception among them, keeps its own failure and simply goes unannotated.
+   An exception that refuses the note, a frozen dataclass exception among them, keeps its own failure and goes unannotated.
    One exception object raised out of the same block on every attempt of a retry loop collects one note per attempt, since a note records a block the exception left rather than a block that was open.
 
    Only an :exc:`Exception` is annotated.

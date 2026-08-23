@@ -50,8 +50,7 @@ _dropped: dict[str, None] = {}
 class _Scan:
     """Remembers the resolution count the last pending scan saw.
 
-    A holder rather than a module global, so no writer needs a global
-    statement.
+    A holder rather than a module global, so no writer needs a global statement.
     """
 
     __slots__ = ("at",)
@@ -77,10 +76,9 @@ class Declaration:
 class _Pending:
     """A declaration waiting for its ref to resolve.
 
-    Carries the metadata unassembled, since the Declaration is built with
-    the resolved key, and eq=False keeps identity comparison, since
-    comparing the ref inside would force the import this list exists to
-    avoid.
+    Carries the metadata unassembled, since the Declaration is built with the
+    resolved key, and eq=False keeps identity comparison, since comparing the
+    ref inside would force the import this list exists to avoid.
     """
 
     ref: _Ref
@@ -263,8 +261,7 @@ def keys() -> Mapping[str | type[Any], Declaration]:
 
     For a startup check, an admin page or a test.  Nothing is imported by the
     call, so a declaration made through a ref() appears once the ref has
-    resolved, and the catalogue lists what the modules imported so far have
-    declared.
+    resolved, and the catalogue lists what the modules imported so far declared.
     """
     _absorb()
     with _lock:
@@ -325,7 +322,7 @@ def _restore(saved: _Saved) -> None:
     actually started from.  The firings kept are the snapshot's, filtered to
     keys the merged catalogue still marks suspicious.  A pre-block pending
     declaration whose ref resolved during the block is absorbed on the way
-    out, since it is pre-block configuration whose moment simply arrived, and
+    out, since it is pre-block configuration whose moment arrived, and
     leaving it pending would let it re-land over a later declaration.
     """
     declared, pending, fired, dropped = saved

@@ -19,7 +19,7 @@ async def fetch(cfg: FromCtx[Config] = injected, retry: int = 0) -> str:
 
 class TestAsyncInjection:
     def test_wrapper_is_a_coroutine_function(self) -> None:
-        """The wrapper must be async — never a sync function returning a coroutine."""
+        """The wrapper must be async, never a sync function returning a coroutine."""
         assert inspect.iscoroutinefunction(fetch)
 
     async def test_injects_from_provider(self) -> None:

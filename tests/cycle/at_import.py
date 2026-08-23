@@ -22,8 +22,7 @@ class Scope:
 
 
 try:
-    # The module is still initialising here too, but the name that is missing is
-    # missing from the class, which has nothing to do with the import.
+    # Still initialising here too, but the missing name is the class's, not the import's.
     use(ref("tests.cycle.at_import:Scope.missing"))
 except KeyResolutionError as exc:
     NESTED_FAILURE = str(exc)

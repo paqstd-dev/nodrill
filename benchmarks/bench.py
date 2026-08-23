@@ -7,7 +7,7 @@ numbers and the script that produced them cannot drift apart.
 The first rows are one function doing one read, reached five ways, so the
 rows are comparable to each other and to handing the value in as a
 parameter, which is what nodrill replaces.  The rest price the things the
-prose claims: entering a scope, entering it with a stack already open, and
+prose claims, entering a scope, entering it with a stack already open, and
 crossing into a thread.
 
 Absolute nanoseconds move with the machine, so the whole table is timed
@@ -57,7 +57,7 @@ NOISE = 0.08
 
 @dataclass
 class Config:
-    """The provided value; a dataclass because that is what callers use."""
+    """The provided value, a dataclass because that is what callers use."""
 
     dsn: str = "postgres://"
 
@@ -106,7 +106,7 @@ THREAD = "`wrap(fn)()`, per call into a thread"
 # Handing the value in is the alternative nodrill replaces, so it is what the ratios divide by.
 BASELINE = PASSED
 
-# The published order: the comparable reads, then the floor, then the scope costs.
+# The published order, comparable reads first, then the floor, then the scope costs.
 ORDER = (
     PASSED,
     USED,
@@ -212,7 +212,8 @@ def run(loops: dict[str, int]) -> dict[str, float]:
 def render(timings: Mapping[str, float]) -> str:
     """Format timings as the reStructuredText block the performance page carries."""
     base = timings[BASELINE]
-    header = ("operation", "ns", "×")  # noqa: RUF001 — the sign is the published column heading
+    # The multiplication sign, since that is the heading the published table carries.
+    header = ("operation", "ns", "×")  # noqa: RUF001
     rows = [(label, f"{round(timings[label])}", ratio(timings[label] / base)) for label in ORDER]
     widths = [max(len(cell) for cell in column) for column in zip(header, *rows, strict=True)]
     rule = "  ".join("=" * width for width in widths)

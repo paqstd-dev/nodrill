@@ -3,8 +3,7 @@
 export() renders the providers you name as a plain dict that JSON can hold,
 and adopt() opens them again wherever that dict arrives.  A codec registered
 with set_codec() maps what JSON cannot hold into what it can, and its result
-is checked like any other, so the envelope stays JSON whatever the codec does
-inside.
+is checked like any other, so the envelope stays JSON whatever a codec does.
 """
 
 from __future__ import annotations
@@ -60,11 +59,10 @@ def export(*names: str) -> dict[str, Any]:
 
     Nothing travels unless it is named here, and every value has to be
     JSON-safe, meaning a str, int, float, bool, None, or a list or dict of
-    those.  Anything else raises rather than being coerced, so a value
-    arrives on the other side as itself or not at all.  Containers are
-    rebuilt rather than referenced, so a write to a provider never reaches
-    an envelope already handed on.  The result carries a version that
-    adopt() checks.
+    those.  Anything else raises rather than being coerced, so a value arrives
+    on the other side as itself or not at all.  Containers are rebuilt rather
+    than referenced, so a write to a provider never reaches an envelope already
+    handed on.  The result carries a version that adopt() checks.
     """
     # Read once, so a set_codec() part way through cannot build one envelope out of two codecs.
     dump = _codec.dump

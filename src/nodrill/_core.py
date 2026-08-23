@@ -394,8 +394,7 @@ class _Sealing:
 
     _sealed = True
 
-    # What the mixin reads off whichever provider it sits in front of, declared because
-    # a self typed as that host would leave super() with nothing to resolve against.
+    # Declared here, since a self typed as the host provider leaves super() nothing to resolve.
     _scope: _Scope
     _token: Token[dict[str | type[Any], Any]] | None
 

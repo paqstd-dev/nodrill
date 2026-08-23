@@ -238,13 +238,13 @@ The registry therefore never holds a ref, so keys stay exactly ``str`` or ``type
 Only the consumer side is deferred, which is the side with the import problem.
 
 Resolution runs without a lock.
-It is deterministic and idempotent — :func:`~importlib.import_module` caches and the attribute walk is pure — so a racing second walk costs a walk and both threads arrive at the one object the module holds.
+It is deterministic and idempotent, since :func:`~importlib.import_module` caches and the attribute walk is pure, so a racing second walk costs a walk and both threads arrive at the one object the module holds.
 The alternative, a lock held across an import, orders this library's lock against the interpreter's own per-module import locks, in the opposite direction from a module body that resolves a ref while it is being imported.
 That is a deadlock, and the same reasoning is why CPython dropped its global import lock.
 A failure is not cached either, unlike a ``lazy`` factory's, because a path that fails inside an import cycle is a path that resolves normally once the cycle unwinds.
 
 The dotted spelling resolves from the longest importable prefix, the way :mod:`pydoc`'s ``locate`` reads a name, and stops at the first prefix that imports rather than continuing to shorter ones, so ``a.b.c`` reports what is wrong with ``a.b`` instead of quietly reporting something about ``a``.
-A prefix that is simply not a module is skipped.
+A prefix that is not a module at all is skipped.
 An :exc:`ImportError` from inside a module's own body is not, since that would be a real failure mistaken for a path one component too long.
 The colon form is canonical for exactly that reason, since it says where the module ends and needs no rule.
 
@@ -258,14 +258,15 @@ A bare dotted string as a key was rejected.
 The plan is built once at decoration, where :func:`inspect.signature` plus ``get_type_hints(include_extras=True)`` find the marked parameters and their context keys.
 
 Calls never touch :mod:`inspect` again.
-The plan compiles into a wrapper that mirrors the function's own signature, the way :mod:`dataclasses` builds ``__init__``, so the interpreter binds arguments natively, each injectable parameter defaults to the public ``injected`` sentinel, and the body is one identity check per parameter — an inlined registry read on the hit path, with a miss handed to the same fallback path ``use()`` takes, which owns ``set_default`` and the error.
+The plan compiles into a wrapper that mirrors the function's own signature, the way :mod:`dataclasses` builds ``__init__``, so the interpreter binds arguments natively, each injectable parameter defaults to the public ``injected`` sentinel, and the body is one identity check per parameter, an inlined registry read on the hit path, with a miss handed to the same fallback path ``use()`` takes, which owns ``set_default`` and the error.
 There is no repacking through ``*args`` and no signature walk at call time, whatever shape the call takes, and compilation is paid once, at decoration, in microseconds per function.
 The generated source is registered in :mod:`linecache` under a counter-unique filename, so a traceback through a wrapper shows its actual lines and ``pdb`` can step through them.
 The entry is removed again when the wrapper itself is garbage collected.
 The resolution helpers are bound into the wrapper at decoration, so patching nodrill internals afterwards does not change compiled wrappers, and the supported seams are ``provider()``, ``set_default()`` and ``isolate()``.
 
 Two consequences are worth knowing.
-A bad call fails before any resolution runs, unknown keywords and over-long positional lists natively, and an under-supplied call with a missing-argument :exc:`TypeError` worded exactly as the interpreter words it — though the arity range such messages report counts injectable parameters as optional, which from the caller's side they are.
+A bad call fails before any resolution runs, unknown keywords and over-long positional lists natively, and an under-supplied call with a missing-argument :exc:`TypeError` worded exactly as the interpreter words it.
+The arity range such a message reports counts injectable parameters as optional, which from the caller's side they are.
 And a call that passes an injected parameter positionally costs the same as any other, since there is no fallback path for it to land on.
 
 If hint resolution hits a :exc:`NameError` at decoration, from string annotations naming things defined later, plan build and compilation move behind a dispatching wrapper to the first call and are cached, and a racing double build is harmless because plans are deterministic.

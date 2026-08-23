@@ -37,7 +37,7 @@ The catalogue
    nodrill.declare("audit", doc="What the request is doing", provided_by="request boundary")
 
    for key, record in nodrill.keys().items():
-       print(key, "—", record.doc)
+       print(key, record.doc)
 
 A startup check can assert the catalogue holds what the deployment expects, an admin page can render it, and a test can read it instead of grepping.
 String keys benefit most, since a string key has no definition site for a reader to find.

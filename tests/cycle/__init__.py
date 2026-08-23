@@ -6,6 +6,5 @@ nothing back, so the cycle never forms.  The `direct_` pair is the same shape
 written with a plain import and cannot be imported at all, so the cycle here is
 a real one rather than a described one.
 
-`at_import`, `alias` and `reloadable` carry a case each, described where they
-stand.
+`at_import`, `alias` and `reloadable` carry a case each, described in place.
 """

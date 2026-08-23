@@ -10,7 +10,7 @@ from nodrill import FromCtx, NoProviderError, inject, injected, provider
 
 @inject
 def refers_forward(cfg: FromCtx[DefinedLater] = injected) -> str:
-    """Decorated while `DefinedLater` does not exist yet — must not raise."""
+    """Decorated while `DefinedLater` does not exist yet, which must not raise."""
     return cfg.tag
 
 

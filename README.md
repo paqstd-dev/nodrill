@@ -94,7 +94,8 @@ Start with the [tutorial](https://nodrill.readthedocs.io/en/latest/content/intro
 
 ## Contributing
 
-Bug reports and small focused pull requests are welcome. See [CONTRIBUTING.md](https://github.com/paqstd-dev/nodrill/blob/main/.github/CONTRIBUTING.md).
+Bug reports and small focused pull requests are welcome.
+See [CONTRIBUTING.md](https://github.com/paqstd-dev/nodrill/blob/main/.github/CONTRIBUTING.md).
 `make install` sets up the environment, and `make` runs the same gate CI does.
 
 Security issues go through a [private advisory](https://github.com/paqstd-dev/nodrill/security/advisories/new) rather than the issue tracker.

@@ -61,9 +61,8 @@ def _reduced(error: BaseException) -> tuple[Any, tuple[Any, ...]]:
 class NoProviderError(LookupError):
     """Raised by use() when no provider is active for the requested key.
 
-    Carries the requested key, the active keys, the boundaries a declaration
-    named for it and, under debug mode, the diagnosis of where the value is,
-    as attributes.
+    Carries as attributes the requested key, the active keys, the boundaries a
+    declaration named for it and, under debug mode, where the value actually is.
     """
 
     # A class-level default, so one pickled by a release without the field still answers.

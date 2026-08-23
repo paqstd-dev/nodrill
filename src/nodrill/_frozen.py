@@ -70,8 +70,7 @@ class _FrozenProxy(_View):
     def __reduce_ex__(self, protocol: SupportsIndex) -> Any:
         raise TypeError(_UNCOPYABLE)
 
-    # On the class, since copy looks these up on the instance and __getattr__ would
-    # hand back the target's own hook.
+    # On the class, since copy looks them up on the instance, where __getattr__ answers for it.
     def __copy__(self) -> Any:
         raise TypeError(_UNCOPYABLE)
 

@@ -252,8 +252,7 @@ class TestResolutionFailures:
             ref(Config)  # type: ignore[arg-type]
 
     def test_a_path_naming_a_module_is_only_refused_at_the_lookup(self) -> None:
-        # 'package.module' cannot be told from 'module.Name', so the path is accepted
-        # and the module it names is what fails, as any other non-key target does.
+        # 'package.module' cannot be told from 'module.Name', so the module it names fails.
         key = ref("json.decoder")
         with pytest.raises(TypeError, match="use\\(\\) expects a string name or a class"):
             use(key)

@@ -4,9 +4,9 @@
 
 ## Checklist
 
-<!-- Documentation-only fixes can skip most of this; say so and submit. -->
+<!-- Documentation-only fixes can skip most of this, so say so and submit. -->
 
-- [ ] `make -k` passes: lint, mypy, pyright, 100 percent branch coverage, docs, workflow audit.
+- [ ] `make -k` passes, meaning lint, mypy, pyright, 100 percent branch coverage, docs and the workflow audit.
 - [ ] There are tests for the new or changed behaviour.
 - [ ] Documentation is updated, including the reference page if the public API changed.
 - [ ] Prose uses semantic line breaks, one sentence per line.

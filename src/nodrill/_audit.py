@@ -29,14 +29,12 @@ _HEADER = "# nodrill contract 1"
 _SUFFIX = ".shard"
 # A tab, because repr escapes one and a key may legally hold two spaces in a row.
 _GAP = "\t"
-# Written and diffed on machines nobody here chose, so neither the encoding nor the line ending
-# is left to the platform.
+# Written and diffed on machines nobody here chose, so nothing about the bytes is the platform's.
 _ENCODING = "utf-8"
 _NEWLINE = "\n"
 # The vocabulary a fact is written in, which _parse refuses a line outside of.
 _VERBS = frozenset({"requires", "set_default", "default"})
-# Named here because _audit owns the file, where NODRILL_CONTRACT is named in _debug because
-# it decides whether this module is imported at all.
+# Owned here with the file, unlike NODRILL_CONTRACT, which gates this import and lives in _debug.
 _ENTRY_VAR = "NODRILL_CONTRACT_ENTRY"
 _RUN_VAR = "NODRILL_CONTRACT_RUN"
 

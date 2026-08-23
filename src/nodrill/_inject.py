@@ -563,9 +563,8 @@ def _compile_wrapper(
 ) -> Callable[..., Any]:
     """Materialize the rendered wrapper and tie the lifetimes together.
 
-    The registered source lives exactly as long as the wrapper, and the
-    wrapper is popped out of its own globals so nothing needs the cycle
-    collector to die.
+    The registered source lives as long as the wrapper, and the wrapper is
+    popped out of its own globals so nothing needs the cycle collector to die.
     """
     name, source, ns = _render_wrapper(func, sig, plan)
     filename = f"<@inject {plan.label}-{next(_SOURCE_IDS)}>"
@@ -702,10 +701,9 @@ def inject(func: Any = None, /, *, from_: _KeyArg | None = None) -> Any:
     attribute of use("app"), defaults included, and skips self and cls.
     Explicitly passed arguments always win, an explicit None included.
 
-    Works on plain and async functions, methods, classmethods and
-    staticmethods in either decorator order.  Generator functions are
-    rejected, because their bodies run after the call, possibly under
-    different providers.
+    Works on plain and async functions, methods, classmethods and staticmethods
+    in either decorator order.  Generator functions are rejected, because their
+    bodies run after the call, possibly under different providers.
     """
     if from_ is not None and not isinstance(from_, str | type) and not _is_ref(from_):
         raise TypeError(

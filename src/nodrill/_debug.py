@@ -2,13 +2,11 @@
 
 A miss usually means the provider is open somewhere this frame cannot see,
 because the call crossed a boundary that does not carry context.  The
-evidence for that sits in another context, which is where a lookup cannot
-look.
+evidence sits in another context, which is where a lookup cannot look.
 
-While debug mode is on, every provider block records where it was entered in
-a module-level ledger, and a miss reads the ledger to report a cause.  A
-ContextVar could not hold it, since one would only ever show the scopes this
-frame already sees.
+While debug mode is on, every provider block records where it was entered
+in a module-level ledger that a miss reads to report a cause.  A ContextVar
+could not hold it, since one shows only the scopes this frame already sees.
 
 The contract recorder rides the same instrumentation.  NODRILL_CONTRACT arms
 it at import, every read under an entry point becomes a fact, and the process
@@ -264,7 +262,7 @@ class _InstrumentedRegistry(dict[_Key, Any]):
         self.entry = entry
 
     def _mark(self, key: _Key) -> None:
-        """Note that something read the block providing key."""
+        """Mark the block providing key as read."""
         reads = self.owners.get(key)
         if reads is not None:
             reads.hit = True
@@ -327,8 +325,7 @@ def _record_fallback(key: _Key, source: str, chain: tuple[Any, ...]) -> None:
 def _user_site() -> tuple[_Site, int]:
     """Return the innermost site outside this package, and how far up it is.
 
-    The distance is the stacklevel warnings.warn() wants, counted from the
-    caller.
+    The distance is the stacklevel warnings.warn() wants, counted from the caller.
     """
     frame = inspect.currentframe()
     levels = 0
@@ -370,10 +367,9 @@ def _record_enter(
 ) -> tuple[int | None, _Registry]:
     """Note an entered provider block, and return its handle with the registry to install.
 
-    The handle is the block's serial, which the provider holds until it
-    exits, and it is None when only the audit is watching, since then the
-    ledger has nothing to forget.  id() would be reused by the next provider
-    at that address.
+    The handle is the block's serial, which the provider holds until it exits,
+    and it is None when only the audit is watching, since the ledger then has
+    nothing to forget.  id() would be reused by whatever is allocated there next.
     """
     handle: int | None = None
     reads: _Reads | None = None
@@ -439,8 +435,8 @@ def _record_exit(handle: int, *, failed: bool) -> None:
 def _rank(entry: _Block, here: _Where) -> tuple[int, int, int]:
     """Order the ledger by how likely a block is to explain this frame's miss.
 
-    Nearest frame first, then a block still open over one that exited, then
-    the innermost.
+    Nearest frame first, then a block still open over one that exited, and the
+    innermost of those last.
     """
     if entry.where.thread != here.thread:
         near = 2
@@ -604,12 +600,11 @@ def _codec_lines() -> list[str]:
 def explain() -> str:
     """Return a report of the provider blocks open right now, a thread at a time.
 
-    Written for a breakpoint, as print(nodrill.explain()).  Blocks opened
-    on other threads and in other tasks are listed too, which is the reason
-    to read this rather than active(), and the reader's own thread comes
-    first with its own blocks innermost first.  The codec and any suspicious
-    fallback that has fired are named above them, since nothing else in the
-    process reports either.
+    Written for a breakpoint, as print(nodrill.explain()).  Blocks opened on
+    other threads and in other tasks are listed too, which is the reason to read
+    this rather than active(), and the reader's own thread comes first with its
+    own blocks innermost first.  The codec and any suspicious fallback that has
+    fired are named above them, since nothing else in the process reports either.
     """
     heading = [*_codec_lines(), *_report_lines()]
     if not _state.recording:

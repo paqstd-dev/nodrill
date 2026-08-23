@@ -1,4 +1,4 @@
-"""The compiled wrapper as an artifact: its source, its names, its lifetime."""
+"""The compiled wrapper as an artifact, meaning its source, its names and its lifetime."""
 
 import gc
 import linecache

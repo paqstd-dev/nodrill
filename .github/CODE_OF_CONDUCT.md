@@ -2,7 +2,7 @@
 
 nodrill is not a [Python Software Foundation](https://www.python.org/psf-landing/) project, but everyone interacting in its issues, pull requests and discussions is expected to follow the [PSF Code of Conduct](https://policies.python.org/python.org/code-of-conduct/).
 
-In short: be open, considerate and respectful, whatever anyone's position in the project is.
+In short, be open, considerate and respectful, whatever anyone's position in the project is.
 
 ## Enforcement
 
