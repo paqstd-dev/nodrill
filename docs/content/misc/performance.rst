@@ -19,27 +19,33 @@ The first rows are one function doing one read, reached six ways, so they can be
 operation                                                         ns    ×
 ================================================================  ====  ===
 one read in a function, value passed in as a parameter            23    1.0
-the same read through `use()`                                     60    2.6
-the same read through `@inject`                                   61    2.6
-the same read through a `frozen=True` provider                    114   4.9
-the same read through a `sealed=True` provider                    121   5.2
-the same read through a resolved `lazy` provider                  137   5.8
+the same read through `use()`                                     59    2.6
+the same read through `@inject`                                   65    2.8
+the same read through a `frozen=True` provider                    117   5.1
+the same read through a `sealed=True` provider                    124   5.4
+the same read through a resolved `lazy` provider                  136   5.9
 `use(Config)` on its own, without the call frame                  42    1.8
-the same lookup through a `ref()` key                             144   6.2
+the same lookup through a `ref()` key                             143   6.2
 bare `ContextVar.get()`, for reference                            16    0.7
-`with provider(...)`, enter and exit                              868   37
-the same with 8 providers already open                            904   39
-`with provider(..., sealed=True)`, entered and exited             2386  102
-`with provider(lazy(...))`, entered and exited unread             1799  77
-`with provider(..., extend=True)`, over an 8-attribute namespace  1984  85
-`wrap(fn)()`, per call into a thread                              539   23
+`with provider(...)`, enter and exit                              843   37
+the same with 8 providers already open                            881   38
+`with provider(..., sealed=True)`, entered and exited             2363  103
+`with provider(lazy(...))`, entered and exited unread             1799  78
+`with provider(..., extend=True)`, over an 8-attribute namespace  1954  85
+`wrap(fn)()`, per call into a thread                              531   23
 ================================================================  ====  ===
 
-CPython 3.14.5 on macOS 26.6, arm64, measured 2026-08-23.
+CPython 3.14.5 on macOS 26.6, arm64, measured 2026-08-24.
 
 .. end benchmarks
 
 The ``×`` column is against handing the value in as a parameter, which is the alternative nodrill removes from the signatures in between.
+It is the column to read, because it is the one that travels.
+
+Everything here is one thread doing one thing, so what the nanoseconds depend on is how fast one core is, and not how many there are.
+A machine with more cores runs the same row at the same speed, and a server core is often slower at this than a laptop one, so a bigger machine is not a faster table.
+What a quiet machine buys is a table that says the same thing twice, which is why the numbers are timed over several passes and a row is only republished when it moved further than a rerun moves it.
+Your own figures will differ and the ratios between them should not, which is the part any claim below rests on.
 
 Reading through :func:`~nodrill.use` costs a little over the parameter it replaces.
 :func:`~nodrill.inject` costs more, because it fills the argument before the body runs.

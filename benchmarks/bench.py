@@ -10,15 +10,23 @@ parameter, which is what nodrill replaces.  The rest price the things the
 prose claims: entering a scope, entering it with a stack already open, and
 crossing into a thread.
 
-Absolute nanoseconds move with the machine and a rerun lands within a few
-percent; the ratios are the part worth reading.  Nothing here runs in CI:
-timing on a shared runner measures the runner.
+Absolute nanoseconds move with the machine, so the whole table is timed
+several times over and every row keeps its own best pass.  Timing one row to
+completion before starting the next made each row hostage to whatever the
+machine did during its own second, which moved the ratios as well, since the
+baseline every ratio divides by is one of the rows.
+
+A published number is only replaced when it moved further than a rerun
+moves it, so running this on an unchanged tree writes nothing and a diff
+means a real change.  Nothing here runs in CI, because timing on a shared
+runner measures the runner.
 """
 
 from __future__ import annotations
 
 import argparse
 import platform
+import re
 import sys
 import timeit
 from collections.abc import Mapping, Sequence
@@ -39,6 +47,12 @@ STACK_DEPTH = 8
 
 # What a request scope carries by the time the layers are done accumulating.
 NAMESPACE_WIDTH = 8
+
+# Enough passes that a row unlucky in one of them is measured fairly in another.
+PASSES = 5
+
+# What a rerun moves a row by, below which the published number is left alone.
+NOISE = 0.08
 
 
 @dataclass
@@ -131,17 +145,36 @@ PROVIDED: tuple[tuple[str, str], ...] = (
 )
 
 
-def measure(statement: str, namespace: dict[str, object]) -> float:
-    """Return nanoseconds per loop for statement, letting timeit pick the count."""
+def measure(
+    label: str, statement: str, namespace: dict[str, object], loops: dict[str, int]
+) -> float:
+    """Return nanoseconds per loop, reusing the loop count this row settled on in pass one."""
     timer = timeit.Timer(statement, globals=namespace)
-    loops, total = timer.autorange()
-    # Best of five rather than one mean, since a single run trails whatever the machine did.
-    best = min(timer.repeat(repeat=5, number=loops))
-    return min(total, best) / loops * 1e9
+    count = loops.get(label)
+    if count is None:
+        count, total = timer.autorange()
+        loops[label] = count
+        return total / count * 1e9
+    return timer.timeit(count) / count * 1e9
 
 
-def run() -> dict[str, float]:
-    """Time every case, each under the context its row describes."""
+def best_of(passes: int) -> dict[str, float]:
+    """Time the whole table repeatedly and keep each row's best pass.
+
+    Noise only ever adds time, so the minimum is the estimate, and taking it
+    across passes rather than within one row is what stops a row that was
+    timed during a bad second from being the published number.
+    """
+    loops: dict[str, int] = {}
+    best: dict[str, float] = {}
+    for _ in range(passes):
+        for label, timing in run(loops).items():
+            best[label] = min(best.get(label, timing), timing)
+    return best
+
+
+def run(loops: dict[str, int]) -> dict[str, float]:
+    """Time every case once, each under the context its row describes."""
     config = Config()
     reference: ContextVar[Config] = ContextVar("reference")
     reference.set(config)
@@ -149,29 +182,29 @@ def run() -> dict[str, float]:
     with provider(config):
         bound = wrap(noop)
         namespace = {**globals(), **locals()}
-        timings = {label: measure(statement, namespace) for label, statement in PROVIDED}
+        timings = {label: measure(label, stmt, namespace, loops) for label, stmt in PROVIDED}
 
     # The frozen row reuses read_used, so its delta is the proxy and nothing else.
     with provider(config, frozen=True):
-        timings[FROZEN] = measure("read_used('r')", {**globals(), **locals()})
+        timings[FROZEN] = measure(FROZEN, "read_used('r')", {**globals(), **locals()}, loops)
 
     # The sealed row is the same read again, so its delta is the liveness check and nothing else.
     with provider(config, sealed=True):
-        timings[SEALED] = measure("read_used('r')", {**globals(), **locals()})
+        timings[SEALED] = measure(SEALED, "read_used('r')", {**globals(), **locals()}, loops)
 
     # And the lazy row prices the cell after the first read has already resolved it.
     with provider(lazy(Config, Config)):
-        timings[LAZY] = measure("read_used('r')", {**globals(), **locals()})
+        timings[LAZY] = measure(LAZY, "read_used('r')", {**globals(), **locals()}, loops)
 
     # An extending layer copies the enclosing namespace too, so it is priced over a full one.
     with provider("scope", **{f"field{i}": i for i in range(NAMESPACE_WIDTH)}):
-        timings[EXTEND] = measure(EXTEND_STATEMENT, {**globals(), **locals()})
+        timings[EXTEND] = measure(EXTEND, EXTEND_STATEMENT, {**globals(), **locals()}, loops)
 
     # Entering copies the registry, so the claim that the copy scales with depth is priced here.
     with ExitStack() as stack:
         for layer in range(STACK_DEPTH):
             stack.enter_context(provider(f"layer{layer}"))
-        timings[STACKED] = measure(ENTER_STATEMENT, {**globals(), **locals()})
+        timings[STACKED] = measure(STACKED, ENTER_STATEMENT, {**globals(), **locals()}, loops)
 
     return timings
 
@@ -190,7 +223,7 @@ def render(timings: Mapping[str, float]) -> str:
         ).rstrip()
 
     lines = [rule, line(header), rule, *(line(row) for row in rows), rule]
-    return "\n".join(lines) + f"\n\n{stamp()}\n"
+    return "\n".join(lines)
 
 
 def stamp() -> str:
@@ -207,6 +240,39 @@ def ratio(times: float) -> str:
     return f"{times:.1f}" if times < 10 else str(round(times))  # noqa: PLR2004
 
 
+# One row of the rendered table, which is how the page hands its numbers back.
+ROW = re.compile(r"^(\S.*?)\s{2,}(\d+)\s{2,}[\d.]+$")
+
+
+def carried(document: str) -> str:
+    """Return the table the page carries right now, rules included, so it can be compared."""
+    start = document.index(START)
+    end = document.index(END, start)
+    block = document[start:end].splitlines()
+    rules = [number for number, line in enumerate(block) if line.startswith("==")]
+    return "\n".join(block[rules[0] : rules[-1] + 1])
+
+
+def published(table: str) -> dict[str, float]:
+    """Read the numbers the page already carries, so a rerun can leave them where they are."""
+    found = (ROW.match(line) for line in table.splitlines())
+    return {row[1]: float(row[2]) for row in found if row is not None and row[1] != "operation"}
+
+
+def steadied(fresh: Mapping[str, float], old: Mapping[str, float]) -> dict[str, float]:
+    """Keep every published number a rerun would only have jittered.
+
+    A row moves when it moved further than a rerun moves it, so the diff of
+    this page is a signal rather than the weather on the machine that ran it.
+    """
+    kept = {}
+    for label, timing in fresh.items():
+        was = old.get(label)
+        settled = was is not None and abs(timing - was) <= was * NOISE
+        kept[label] = was if settled else timing
+    return kept
+
+
 def splice(document: str, table: str) -> str:
     """Return document with the region between the markers replaced by table."""
     start = document.index(START) + len(START)
@@ -220,20 +286,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--write",
         action="store_true",
-        help="replace the table in the performance page instead of writing to stdout",
+        help="update the rows of the performance page that moved, instead of writing to stdout",
     )
     args = parser.parse_args(argv)
 
-    table = render(run())
+    timings = best_of(PASSES)
     if not args.write:
-        sys.stdout.write(table)
+        sys.stdout.write(f"{render(timings)}\n\n{stamp()}\n")
         return 0
 
     document = PAGE.read_text(encoding="utf-8")
     if START not in document or END not in document:
         sys.stderr.write(f"{PAGE}: markers {START} and {END} not found\n")
         return 1
-    PAGE.write_text(splice(document, table), encoding="utf-8")
+    was = carried(document)
+    old = published(was)
+    timings = steadied(timings, old)
+    table = render(timings)
+    if table == was:
+        sys.stderr.write(f"{PAGE}: every row is within {NOISE:.0%} of what it says, left alone\n")
+        return 0
+    PAGE.write_text(splice(document, f"{table}\n\n{stamp()}\n"), encoding="utf-8")
+    moved = [label for label in ORDER if round(timings[label]) != old.get(label)]
+    sys.stderr.write(f"{PAGE}: rewrote {len(moved)} of {len(ORDER)} rows\n")
+    for label in moved:
+        sys.stderr.write(f"  {old.get(label)} -> {round(timings[label])}  {label}\n")
     return 0
 
 
