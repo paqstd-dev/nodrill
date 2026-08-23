@@ -62,7 +62,8 @@ What has no row
 
 Debug mode has none, because it is not for the hot path.
 :func:`~nodrill.debug` makes entering a provider read the stack and write to a ledger, and leaves a lookup that hits costing what it always cost.
-``debug(unused=True)`` also routes every read through a counting registry, which puts a hit at roughly three times its usual price.
+``debug(unused=True)`` also routes every read through an instrumented registry, which puts a hit at roughly three times its usual price.
+``NODRILL_CONTRACT`` installs the same registry and pays the same, which is why recording a contract belongs in a suite and not in a running service.
 
 Exception notes have none either, because nothing in that path runs until an exception is already leaving a block.
 A block that exits cleanly costs one pointer comparison more than it did before :func:`~nodrill.annotate_exceptions` existed.

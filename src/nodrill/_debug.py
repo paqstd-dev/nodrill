@@ -9,6 +9,10 @@ While debug mode is on, every provider block records where it was entered in
 a module-level ledger, and a miss reads the ledger to report a cause.  A
 ContextVar could not hold it, since one would only ever show the scopes this
 frame already sees.
+
+The contract recorder rides the same instrumentation.  NODRILL_CONTRACT arms
+it at import, every read under an entry point becomes a fact, and the process
+writes its shard at exit through _audit.
 """
 
 from __future__ import annotations
@@ -17,15 +21,17 @@ import atexit
 import inspect
 import itertools
 import os
+import sys
 import threading
 import warnings
-from collections.abc import MutableMapping
+from collections.abc import Iterable, Iterator, MutableMapping
+from contextlib import contextmanager
 from types import TracebackType
 from typing import Any, NamedTuple
 from weakref import WeakKeyDictionary
 
 from ._declare import _report_lines
-from ._errors import UnusedProviderWarning, _describe_key, _Key, _key_path
+from ._errors import _NO_ENTRY, UnusedProviderWarning, _counted, _describe_key, _Key, _key_path
 from ._refs import _key_target
 
 _Registry = dict[_Key, Any]
@@ -89,7 +95,16 @@ class _State:
     watching is recording or auditing, so that path still tests one thing.
     """
 
-    __slots__ = ("auditing", "counting", "depth", "recording", "seq", "unused_depth", "watching")
+    __slots__ = (
+        "auditing",
+        "counting",
+        "depth",
+        "reads_full",
+        "recording",
+        "seq",
+        "unused_depth",
+        "watching",
+    )
 
     def __init__(self) -> None:
         self.depth = 0
@@ -98,7 +113,12 @@ class _State:
         self.counting = False
         self.auditing = False
         self.watching = False
+        self.reads_full = False
         self.seq = 0
+
+    def watch(self) -> None:
+        """Restate what the provider path tests, so the two flags behind it live in one place."""
+        self.watching = self.recording or self.auditing
 
 
 _state = _State()
@@ -111,12 +131,42 @@ _closed: dict[tuple[_Key, int, int | None], _Block] = {}
 # Keys the cap above dropped, which a miss reports as gone rather than as absent.
 _forgotten: dict[_Key, None] = {}
 
-# What the audit accumulates, uncapped and never rolled back, since a run is the unit.
+# Never rolled back, since a run is the unit, and capped since an entry point may carry data.
 _reads: set[tuple[str, str, str]] = set()
-# The entry point of a read no provider block encloses, which only a fallback can be.
-_NO_ENTRY = "(none)"
+# High enough that no honest run reaches it, low enough to stay an answer rather than a heap.
+_READS_LIMIT = 100_000
 # Keys NODRILL_CONTRACT_ENTRY names as boundaries, which mint a label even when nested.
 _declared_entries: set[str] = set()
+
+
+def _note(fact: tuple[str, str, str]) -> None:
+    """Record one fact, and say once when a run stopped being one the contract can rest on."""
+    if fact in _reads:
+        return
+    if len(_reads) >= _READS_LIMIT:
+        if not _state.reads_full:
+            _state.reads_full = True
+            sys.stderr.write(
+                f"nodrill: {_READS_LIMIT} facts recorded, so this run stopped recording. "
+                f"An entry point carrying a request id mints one per request, and "
+                f"NODRILL_CONTRACT_ENTRY names the block that is the boundary\n"
+            )
+        return
+    _reads.add(fact)
+
+
+def _entry_for(chain: tuple[Any, ...]) -> str:
+    """Return the entry point a chain of open blocks answers to.
+
+    A declared boundary wins over the block above it, innermost first, and an
+    empty chain is no entry point at all rather than the last one to close.
+    """
+    labels = [_key_path(_key_target(block._key)) for block in chain]  # noqa: SLF001
+    for label in reversed(labels):
+        if label in _declared_entries:
+            return label
+    return labels[0] if labels else _NO_ENTRY
+
 
 # Serials rather than id(), which the interpreter hands on as soon as a task dies.
 _task_serials: WeakKeyDictionary[Any, int] = WeakKeyDictionary()
@@ -126,7 +176,7 @@ _next_task_serial = itertools.count(1).__next__
 _from_env = os.environ.get("NODRILL_DEBUG", "") not in {"", "0"}
 _state.depth = 1 if _from_env else 0
 _state.recording = _from_env
-_state.watching = _from_env
+_state.watch()
 
 
 def _arm(environ: MutableMapping[str, str]) -> None:
@@ -137,26 +187,64 @@ def _arm(environ: MutableMapping[str, str]) -> None:
     Takes the mapping rather than reading os.environ, so what it sets can be
     tested without a child interpreter.
     """
+    # Spelled here rather than imported, since it decides whether _audit is loaded at all.
     directory = environ.get("NODRILL_CONTRACT", "")
     if not directory:
         return
     _state.auditing = True
-    _state.watching = True
+    _state.watch()
     # Deferred, so a process that never audits pays for none of the tool's imports.
-    from multiprocessing.util import Finalize  # noqa: PLC0415
+    from multiprocessing.util import Finalize, register_after_fork  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
 
-    from ._audit import _ENTRY_VAR, _declared, _dump, _new_run  # noqa: PLC0415
+    from ._audit import _ENTRY_VAR, _RUN_VAR, _declared, _dump, _new_run  # noqa: PLC0415
 
+    # Resolved now, since the hooks below run at exit and a program may have moved by then.
+    directory = str(Path(directory).resolve())
     _declared_entries.update(_declared(environ.get(_ENTRY_VAR, "")))
-    run = environ.get("NODRILL_CONTRACT_RUN") or _new_run()
+    run = environ.get(_RUN_VAR) or _new_run()
     # Written back so every child joins this run rather than starting one of its own.
-    environ["NODRILL_CONTRACT_RUN"] = run
+    environ[_RUN_VAR] = run
+
+    def _finalize(_: object = None) -> None:
+        """Arrange the exit a worker takes when it never runs atexit."""
+        Finalize(None, _dump, args=(directory, run, _reads), exitpriority=0)
+
     atexit.register(_dump, directory, run, _reads)
     # A multiprocessing worker exits through os._exit, which runs finalizers and not atexit.
-    Finalize(None, _dump, args=(directory, run, _reads), exitpriority=0)
+    _finalize()
+    # A fork clears that registry before the worker body runs, so the child registers again.
+    register_after_fork(sys.modules[__name__], _finalize)
 
 
 _arm(os.environ)
+
+
+@contextmanager
+def _recording(entries: Iterable[str] = ()) -> Iterator[set[tuple[str, str, str]]]:
+    """Record a contract for the extent of a block, which nothing public does on purpose.
+
+    Saved and restored rather than switched off at the end, since the process
+    may be recording for real.  Meant for a test that wants to assert what a
+    handler read without spawning a child interpreter.
+    """
+    saved = (_state.auditing, set(_reads), set(_declared_entries), _state.reads_full)
+    _reads.clear()
+    _declared_entries.clear()
+    _declared_entries.update(entries)
+    _state.auditing = True
+    _state.reads_full = False
+    _state.watch()
+    try:
+        yield _reads
+    finally:
+        _state.auditing = saved[0]
+        _state.reads_full = saved[3]
+        _state.watch()
+        _reads.clear()
+        _reads.update(saved[1])
+        _declared_entries.clear()
+        _declared_entries.update(saved[2])
 
 
 class _InstrumentedRegistry(dict[_Key, Any]):
@@ -184,10 +272,11 @@ class _InstrumentedRegistry(dict[_Key, Any]):
     def __getitem__(self, key: Any) -> Any:
         # Typed loosely because this sees what a caller passed, not what the registry stores.
         value = super().__getitem__(key)
-        self._mark(key)
+        if self.owners:
+            self._mark(key)
         # A consumer read is a subscript, which is what leaves the chain key and a merge out.
         if _state.auditing:
-            _reads.add((self.entry, "requires", _key_path(_key_target(key))))
+            _note((self.entry, "requires", _key_path(_key_target(key))))
         return value
 
     def get(self, key: Any, default: Any = None) -> Any:
@@ -195,26 +284,44 @@ class _InstrumentedRegistry(dict[_Key, Any]):
         value = super().get(key, _MISS)
         if value is _MISS:
             return default
-        self._mark(key)
+        if self.owners:
+            self._mark(key)
         return value
 
 
-def _reinstrument(registry: _Registry, replaced: _Registry) -> _Registry:
-    """Return registry instrumented the way the mapping it replaces was."""
-    if isinstance(replaced, _InstrumentedRegistry):
-        return _InstrumentedRegistry(registry, replaced.owners, replaced.entry)
-    return registry
+def _reinstrument(
+    registry: _Registry,
+    replaced: _Registry,
+    chain: tuple[Any, ...],
+    *,
+    restored: tuple[_Key, _Registry] | None = None,
+) -> _Registry:
+    """Return registry instrumented the way the mapping it replaces was.
+
+    The label is derived from the chain rather than carried over, since a
+    repaired mapping outlives the block that minted it.  A key restored from
+    a block still open is credited to that block, or the next read of it
+    would count for the block that just left.
+    """
+    if not isinstance(replaced, _InstrumentedRegistry):
+        return registry
+    owners = replaced.owners
+    if restored is not None:
+        key, entered = restored
+        reads = entered.owners.get(key) if isinstance(entered, _InstrumentedRegistry) else None
+        if reads is not None:
+            owners = {**owners, key: reads}
+    return _InstrumentedRegistry(registry, owners, _entry_for(chain))
 
 
-def _record_fallback(registry: _Registry, key: _Key, source: str) -> None:
+def _record_fallback(key: _Key, source: str, chain: tuple[Any, ...]) -> None:
     """Note a miss a registration answered, which is the read a raise would never report.
 
     A set_default factory and a use(key, default=...) both return before
     anything reports a miss, so a NoProviderError a registration is hiding
     would otherwise never appear in a contract.
     """
-    entry = registry.entry if isinstance(registry, _InstrumentedRegistry) else _NO_ENTRY
-    _reads.add((entry, source, _key_path(key)))
+    _note((_entry_for(chain), source, _key_path(_key_target(key))))
 
 
 def _user_site() -> tuple[_Site, int]:
@@ -279,14 +386,13 @@ def _record_enter(
             handle = _state.seq
             _open[handle] = _Block(key, site, where, handle, reads)
     owners: dict[_Key, _Reads] = {}
-    minted = _key_path(key)
-    entry = minted
+    # Only the audit reads a label, and rendering a key is not free on the block path.
+    entry = _key_path(key) if _state.auditing else _NO_ENTRY
     if isinstance(enclosing, _InstrumentedRegistry):
         # Inherited whether or not counting is still on, since it is process-wide.
         owners = dict(enclosing.owners)
-        # Outermost comes from the open chain rather than from the kind of mapping inherited,
-        # since a repaired mapping outlives its chain and would hand on a label nothing owns.
-        if not outermost and minted not in _declared_entries:
+        # Outermost is read off the chain, since a repaired mapping outlives the one that made it.
+        if not outermost and entry not in _declared_entries:
             entry = enclosing.entry
     if reads is not None:
         owners[key] = reads
@@ -447,7 +553,7 @@ class _DebugMode:
         with _lock:
             _state.depth += 1
             _state.recording = True
-            _state.watching = True
+            _state.watch()
             if self._unused:
                 _state.unused_depth += 1
                 _state.counting = True
@@ -461,7 +567,7 @@ class _DebugMode:
         with _lock:
             _state.depth -= 1
             _state.recording = _state.depth > 0
-            _state.watching = _state.recording or _state.auditing
+            _state.watch()
             if self._unused:
                 _state.unused_depth -= 1
                 _state.counting = _state.unused_depth > 0
@@ -521,7 +627,7 @@ def explain() -> str:
     blocks = sorted(_open.copy().values(), key=lambda entry: _listing(entry, here))
     if not blocks:
         return "\n".join([*heading, "nodrill debug: no provider block is open."])
-    counted = f"{len(blocks)} provider block{'' if len(blocks) == 1 else 's'}"
+    counted = _counted(len(blocks), "provider block")
     lines = [*heading, f"nodrill debug: {counted} open, innermost first within each thread."]
     lines += [
         f"  {_describe_key(entry.key)} opened at {entry.site.file}:{entry.site.line}, "

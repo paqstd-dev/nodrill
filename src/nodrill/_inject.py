@@ -29,7 +29,7 @@ from typing import (
 )
 
 from ._core import _registry, _resolve_miss
-from ._errors import _describe_key
+from ._errors import _counted, _describe_key
 from ._refs import _is_ref, _KeyArg
 
 _T = TypeVar("_T")
@@ -292,8 +292,8 @@ def _missing_error(label: str, values: tuple[tuple[str, Any], ...]) -> TypeError
         # Two names join with a bare "and". Three or more take the serial comma.
         separator = " and " if count == 2 else ", and "  # noqa: PLR2004
         listed = ", ".join(repr(n) for n in names[:-1]) + separator + repr(names[-1])
-    plural = "s" if count > 1 else ""
-    return TypeError(f"{label}() missing {count} required positional argument{plural}: {listed}")
+    counted = _counted(count, "required positional argument")
+    return TypeError(f"{label}() missing {counted}: {listed}")
 
 
 def _reserved(name: str) -> bool:
@@ -421,6 +421,9 @@ def _resolve_lines(target: str, key: str, ns: _WrapperSpace, indent: str) -> lis
         f"{indent}try:",
         f"{indent}    {target} = {ns.registry}()[{key}]",
         f"{indent}except KeyError:",
+        f"{indent}    {target} = {ns.omitted}",
+        # The miss runs after the handler, so nothing it raises is chained onto the lookup's own.
+        f"{indent}if {target} is {ns.omitted}:",
         f"{indent}    {target} = {ns.miss}({key})",
     ]
 

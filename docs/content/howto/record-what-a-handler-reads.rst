@@ -144,15 +144,23 @@ Two steps, recording and reviewing.
 .. code-block:: yaml
    :caption: .github/workflows/ci.yml
 
-   - run: NODRILL_CONTRACT=.nodrill pytest
-     env:
-       NODRILL_CONTRACT_ENTRY: "'http request','celery worker'"
-   - run: python -m nodrill contract --from .nodrill --write nodrill.contract
-   - run: git diff --exit-code nodrill.contract
+   env:
+     NODRILL_CONTRACT_ENTRY: "'http request','celery worker'"
+   steps:
+     - run: NODRILL_CONTRACT=.nodrill pytest
+     - run: python -m nodrill contract --from .nodrill --write nodrill.contract
+     - run: git diff --exit-code nodrill.contract
+
+The variable is on the job rather than on the recording step, because the command reads it too, and that is what lets it report a boundary you named that no block opened.
+The contract file has to be committed for the third step to compare anything, since ``git diff`` says nothing about a path git does not track.
 
 Recording is off unless ``NODRILL_CONTRACT`` is set, and the variable is read once when `nodrill` is imported, which is also why a subprocess your suite spawns records too.
-Each process writes its own file into the directory and the command merges them, so a suite under `xdist`, one that shells out, or one using a :class:`~concurrent.futures.ProcessPoolExecutor` needs nothing extra.
+Each process writes its own file into the directory and the command merges them, so a suite that shells out or one using a :class:`~concurrent.futures.ProcessPoolExecutor` needs nothing extra.
 A directory reused by a later run is not a problem either, since every process of one run shares a run id and the command reads the newest run and says how many older files it left out.
+
+A run id is inherited through the environment, so processes of one run share it only when the process that started them imported `nodrill` itself.
+A runner that starts its workers directly is the case where that does not hold, and `pytest -n` from a controller whose `conftest.py` never imports the library is the one you are most likely to meet.
+Either import `nodrill` in `conftest.py`, or set ``NODRILL_CONTRACT_RUN`` yourself alongside ``NODRILL_CONTRACT``, and the summary will then report one run rather than shards left out.
 
 What the contract is worth
 --------------------------
@@ -162,7 +170,7 @@ Exactly as much as the run that recorded it.
 A contract lists what the run observed and nothing else, so a key only one untested branch reads is a key the file does not mention.
 The summary line says how many facts under how many entry points the conclusion rests on, and it says it every time rather than only when the number is small, because a guarantee that overstates itself is worse than no guarantee.
 
-Three limits are worth knowing before you rely on it.
+Five limits are worth knowing before you rely on it.
 
 The entry point is a key, so two boundaries that open the same one are one row set, and a boundary you have not named is whatever is open above it.
 
@@ -171,6 +179,12 @@ The file is about what an entry point needs and gets, and a miss that reaches a 
 
 A value read through :func:`~nodrill.inject` is recorded exactly like one read through :func:`~nodrill.use`, but a value a handler receives as an ordinary argument is not context and never appears.
 The file describes the context a boundary depends on, which is the part of its input that no signature shows.
+
+An ambient read through `nodrill.context` is not recorded, because the ambient namespace is unscoped and has no entry point to be credited to.
+A handler that reaches for `context.request_id` shows nothing in the file, and a provider block is what makes a dependency reviewable.
+
+A :func:`~nodrill.lazy` factory runs under the context its own block was opened in, so the keys it reads are credited to whatever entry point was current then rather than to the boundary whose request forced the build.
+Read the factory's dependencies under the boundary as well if the row matters, or open the lazy block inside the boundary.
 
 .. rubric:: See also
 

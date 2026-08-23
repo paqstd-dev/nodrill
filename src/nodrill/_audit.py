@@ -14,12 +14,13 @@ limit the output states rather than one the reader has to infer.
 
 from __future__ import annotations
 
-import argparse
 import os
 import sys
 import time
 import uuid
 from pathlib import Path
+
+from ._errors import _NO_ENTRY, _counted
 
 _Reads = set[tuple[str, str, str]]
 
@@ -28,12 +29,16 @@ _HEADER = "# nodrill contract 1"
 _SUFFIX = ".shard"
 # A tab, because repr escapes one and a key may legally hold two spaces in a row.
 _GAP = "\t"
-# Written and diffed on machines nobody here chose, so the encoding is named rather than guessed.
+# Written and diffed on machines nobody here chose, so neither the encoding nor the line ending
+# is left to the platform.
 _ENCODING = "utf-8"
-# The verbs, in the order a reader cares about them, since anything but requires is worth a look.
-_VERBS = ("requires", "set_default", "default")
-# Named here rather than in _debug, so one module owns the spelling of both variables.
+_NEWLINE = "\n"
+# The vocabulary a fact is written in, which _parse refuses a line outside of.
+_VERBS = frozenset({"requires", "set_default", "default"})
+# Named here because _audit owns the file, where NODRILL_CONTRACT is named in _debug because
+# it decides whether this module is imported at all.
 _ENTRY_VAR = "NODRILL_CONTRACT_ENTRY"
+_RUN_VAR = "NODRILL_CONTRACT_RUN"
 
 
 def _declared(value: str) -> frozenset[str]:
@@ -50,69 +55,83 @@ def _new_run() -> str:
     return f"{time.time_ns()}-{uuid.uuid4().hex}"
 
 
-def _fact(read: tuple[str, str, str]) -> str:
-    """Render one recorded fact as the file's one line shape."""
-    return _GAP.join(read)
-
-
 def _render(reads: _Reads) -> str:
     """Render a contract, sorted so the file is a property of the run and not of its order."""
-    lines = [_HEADER, *(_fact(read) for read in sorted(reads))]
-    return "".join(f"{line}\n" for line in lines)
+    lines = [_HEADER, *(_GAP.join(read) for read in sorted(reads))]
+    return "".join(f"{line}{_NEWLINE}" for line in lines)
+
+
+def _refuse(source: str, saw: str, expected: str) -> ValueError:
+    """Build the one refusal, so a caller can say which file and what it expected."""
+    return ValueError(
+        f"{source} is not a nodrill contract this version reads. {expected}, found {saw!r}"
+    )
 
 
 def _parse(text: str, source: str) -> _Reads:
-    """Read a contract or a shard back, refusing a version this reader does not know."""
+    """Read a contract or a shard back, refusing anything this reader does not know."""
     lines = text.splitlines()
     if not lines or lines[0] != _HEADER:
         opening = lines[0] if lines else "an empty file"
-        raise ValueError(
-            f"{source} is not a nodrill contract this version reads. "
-            f"Expected {_HEADER!r} on the first line and found {opening!r}"
-        )
+        raise _refuse(source, opening, f"Expected {_HEADER!r} on the first line")
     found: _Reads = set()
-    for line in lines[1:]:
-        entry, verb, key = line.split(_GAP)
+    for number, line in enumerate(lines[1:], start=2):
+        fields = line.split(_GAP)
+        if len(fields) != 3:  # noqa: PLR2004
+            raise _refuse(source, line, f"Expected three fields on line {number}")
+        entry, verb, key = fields
+        if verb not in _VERBS:
+            raise _refuse(source, verb, f"Expected one of {sorted(_VERBS)} on line {number}")
         found.add((entry, verb, key))
     return found
+
+
+def _write(target: Path, text: str) -> None:
+    """Write one file of the format, with nothing about it left to the platform."""
+    target.write_text(text, encoding=_ENCODING, newline=_NEWLINE)
 
 
 def _dump(directory: str, run: str, reads: _Reads) -> None:
     """Write this process's records into its own shard of the run, then forget them.
 
     Forgetting is what makes a second call a no-op, which matters because a
-    multiprocessing worker is finalized as well as registered at exit.
+    multiprocessing worker is finalized as well as registered at exit.  Taken
+    before the write, so a thread still recording during shutdown cannot
+    change the set the render is walking.
     """
     if not reads:
         return
-    target = Path(directory)
-    target.mkdir(parents=True, exist_ok=True)
-    # The run first so a merge can group by it, then pid and a token, since a pid is reused.
-    shard = target / f"{run}-{uuid.uuid4().hex}{_SUFFIX}"
-    shard.write_text(_render(reads), encoding=_ENCODING)
+    facts = set(reads)
     reads.clear()
+    target = Path(directory)
+    # The run first so a merge can group by it, then one token, since rpartition recovers the run.
+    shard = target / f"{run}-{uuid.uuid4().hex}{_SUFFIX}"
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        _write(shard, _render(facts))
+    except OSError as error:
+        # A message rather than a traceback out of an exit hook, which exits 0 either way.
+        sys.stderr.write(f"nodrill: cannot record to {directory}, {error.strerror}\n")
 
 
-def _merge(directory: str) -> tuple[_Reads, int, int]:
+def _merge(directory: Path) -> tuple[_Reads, int, int]:
     """Read the newest run in a directory, and say how many shards it left behind.
 
     A directory reused across runs holds both, and a contract built from
     yesterday's reads describes a program that no longer exists.
     """
-    shards = sorted(Path(directory).glob(f"*{_SUFFIX}"))
+    shards = sorted(directory.glob(f"*{_SUFFIX}"))
     if not shards:
         return set(), 0, 0
-    newest = max(shard.name.rpartition("-")[0] for shard in shards)
-    current = [shard for shard in shards if shard.name.startswith(f"{newest}-")]
+    runs: dict[str, list[Path]] = {}
+    for shard in shards:
+        runs.setdefault(shard.name.rpartition("-")[0], []).append(shard)
+    # By when a run last wrote rather than by its id, since a run id may be one a CI system chose.
+    current = max(runs.values(), key=lambda group: max(shard.stat().st_mtime for shard in group))
     found: _Reads = set()
     for shard in current:
         found |= _parse(shard.read_text(encoding=_ENCODING), str(shard))
     return found, len(current), len(shards) - len(current)
-
-
-def _counted(count: int, singular: str, plural: str) -> str:
-    """Render a count and its noun, since every figure below reads as a sentence."""
-    return f"{count} {singular if count == 1 else plural}"
 
 
 def _summary(reads: _Reads, shards: int, stale: int) -> str:
@@ -121,15 +140,15 @@ def _summary(reads: _Reads, shards: int, stale: int) -> str:
     The figures are what this stage can honestly own, which is what a run
     observed rather than what a tree contains.
     """
-    entries = len({entry for entry, _, _ in reads})
+    entries = len({entry for entry, _, _ in reads} - {_NO_ENTRY})
     said = (
-        f"nodrill: {_counted(len(reads), 'fact', 'facts')} under "
-        f"{_counted(entries, 'entry point', 'entry points')}, "
+        f"nodrill: {_counted(len(reads), 'fact')} under "
+        f"{_counted(entries, 'entry point')}, "
         f"recorded from {_counted(shards, 'process', 'processes')}. "
         f"A contract is only as complete as the run that recorded it."
     )
     if stale:
-        said += f" {_counted(stale, 'shard', 'shards')} from an earlier run were left out."
+        said += f" {_counted(stale, 'shard')} from an earlier run were left out."
     return said
 
 
@@ -138,45 +157,63 @@ def _unseen(reads: _Reads, declared: frozenset[str]) -> str | None:
     missing = sorted(declared - {entry for entry, _, _ in reads})
     if not missing:
         return None
-    return f"nodrill: no block opened {', '.join(missing)}, named by NODRILL_CONTRACT_ENTRY"
+    return f"nodrill: no block opened {', '.join(missing)}, named by {_ENTRY_VAR}"
+
+
+def _say(message: str) -> None:
+    """Put one diagnostic on standard error, so the artefact on standard output stays the file."""
+    sys.stderr.write(f"{message}\n")
 
 
 def _contract(source: str, target: str | None, declared: frozenset[str]) -> int:
     """Render the contract a recorded run left, to a file or to stdout."""
     directory = Path(source)
     if not directory.is_dir():
-        sys.stderr.write(f"nodrill: nothing recorded at {source}, so there is no contract\n")
+        _say(f"nodrill: nothing recorded at {source}, so there is no contract")
         return 1
-    reads, shards, stale = _merge(source)
+    try:
+        reads, shards, stale = _merge(directory)
+    except (OSError, ValueError) as error:
+        _say(f"nodrill: cannot read the run at {source}, {error}")
+        return 1
     if not shards:
-        sys.stderr.write(
+        _say(
             f"nodrill: {source} holds no shards, so nothing armed the recorder. "
-            f"Run the suite with NODRILL_CONTRACT={source} first\n"
+            f"Run the suite with NODRILL_CONTRACT={source} first"
         )
         return 1
     text = _render(reads)
     if target is None:
-        sys.stdout.write(text)
+        # Through the buffer, so neither the locale nor the platform edits the artefact.
+        sys.stdout.flush()
+        sys.stdout.buffer.write(text.encode(_ENCODING))
+        sys.stdout.buffer.flush()
     else:
         try:
-            Path(target).write_text(text, encoding=_ENCODING)
+            _write(Path(target), text)
         except OSError as error:
-            sys.stderr.write(f"nodrill: cannot write {target}, {error.strerror}\n")
+            _say(f"nodrill: cannot write {target}, {error.strerror}")
             return 1
-    sys.stderr.write(f"{_summary(reads, shards, stale)}\n")
+    _say(_summary(reads, shards, stale))
     unseen = _unseen(reads, declared)
     if unseen is not None:
-        sys.stderr.write(f"{unseen}\n")
+        _say(unseen)
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run one subcommand and return the code the interpreter should exit with."""
+    # Deferred, so arming a process does not pay for the command line it will never run.
+    import argparse  # noqa: PLC0415
+
+    from . import __version__  # noqa: PLC0415
+
     parser = argparse.ArgumentParser(
         prog="python -m nodrill",
         description="Record and review what each entry point reads out of the context.",
         allow_abbrev=False,
     )
+    parser.add_argument("--version", action="version", version=f"nodrill {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     contract = commands.add_parser(
         "contract",

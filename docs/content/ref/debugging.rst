@@ -53,30 +53,6 @@ debug
 
       NODRILL_DEBUG=1 python -m myapp
 
-.. _ref-contract:
-
-Recording a contract
---------------------
-
-``NODRILL_CONTRACT`` names a directory and turns on recording of what each entry point reads.
-It is read once, at import, like ``NODRILL_DEBUG``, and any non-empty value is a directory rather than a switch, so ``0`` names a directory called ``0``.
-Every process of a run writes its own file there, including one a suite spawns, and the files are merged when the contract is rendered.
-
-``NODRILL_CONTRACT_ENTRY`` names the provider keys that are boundaries, as rendered keys separated by commas, so ``"'http request',myapp.web:Request"``.
-A block whose key is named mints its own entry point even when a block is open above it.
-Without it the entry point is whatever block is outermost, which in an application that opens configuration above its server loop is that configuration.
-
-.. code-block:: bash
-
-   NODRILL_CONTRACT=.nodrill NODRILL_CONTRACT_ENTRY="'http request'" pytest
-   python -m nodrill contract --from .nodrill --write nodrill.contract
-
-``python -m nodrill contract`` renders what a run recorded.
-``--from`` names the directory and is required, ``--write`` names the file and defaults to standard output, and the summary of what the contract rests on always goes to standard error so the artefact can be piped.
-It returns ``0`` when it rendered a contract and ``1`` when it could not, leaving ``2`` to mean the command line itself was wrong.
-
-:doc:`/content/howto/record-what-a-handler-reads` is the task-shaped version, with the file format and what it is worth.
-
    With ``unused=True``, a provider nothing read warns as its block exits, pointing at the ``with`` statement that opened it.
 
    .. code-block:: text
@@ -93,6 +69,37 @@ It returns ``0`` when it rendered a contract and ``1`` when it could not, leavin
    ``unused=True`` puts a counting registry in front of every read on top of that, which is roughly three times a plain hit.
 
    :ref:`howto-find-out-why-the-context-is-missing` runs all of it on a live program.
+
+.. _ref-contract:
+
+Recording a contract
+--------------------
+
+``NODRILL_CONTRACT`` names a directory and turns on recording of what each entry point reads.
+It is read once, at import, like ``NODRILL_DEBUG``, and any non-empty value is a directory rather than a switch, so ``0`` names a directory called ``0``.
+Every process of a run writes its own file there, including one a suite spawns, and the files are merged when the contract is rendered.
+A relative directory is resolved when the variable is read, so a program that changes directory still writes where it was armed.
+Recording puts an instrumented registry in front of every read, at the same cost ``unused=True`` pays, so it belongs in a suite rather than in production.
+
+``NODRILL_CONTRACT_ENTRY`` names the provider keys that are boundaries, as rendered keys separated by commas, so ``"'http request',myapp.web:Request"``.
+A block whose key is named mints its own entry point even when a block is open above it.
+Without it the entry point is whatever block is outermost, which in an application that opens configuration above its server loop is that configuration.
+
+.. code-block:: bash
+
+   NODRILL_CONTRACT=.nodrill NODRILL_CONTRACT_ENTRY="'http request'" pytest
+   python -m nodrill contract --from .nodrill --write nodrill.contract
+
+``NODRILL_CONTRACT_RUN`` groups the processes of one run, and is written into the environment by the first process that reads ``NODRILL_CONTRACT``.
+A child inherits it and joins the run, while a worker whose parent never imported nodrill would start a run of its own, which the merge then reports as shards left out.
+Setting it yourself is how a runner that starts its workers directly, such as ``pytest -n`` from a controller that never imports the library, keeps one run.
+
+``python -m nodrill contract`` renders what a run recorded.
+``--from`` names the directory and is required, ``--write`` names the file and defaults to standard output, and the summary of what the contract rests on always goes to standard error so the artefact can be piped.
+It returns ``0`` when it rendered a contract and ``1`` when it could not, leaving ``2`` to mean the command line itself was wrong.
+A shard it cannot read is a message and the exit code, never a traceback, and ``python -m nodrill --version`` says which nodrill is reading.
+
+:doc:`/content/howto/record-what-a-handler-reads` is the task-shaped version, with the file format and what it is worth.
 
 explain
 -------

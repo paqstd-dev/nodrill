@@ -119,17 +119,20 @@ def _repaired(
     """
     repaired = dict(current)
     key = leaving._key  # noqa: SLF001
+    restored: tuple[str | type[Any], dict[str | type[Any], Any]] | None = None
     # Innermost first, so the first block still open under the key is the one that owns it now.
     for open_block in reversed(chain):
         entered = open_block._entered  # noqa: SLF001
         if open_block is not leaving and entered is not None and open_block._key == key:  # noqa: SLF001
-            # Read with get, since a subscript is what the audit counts as a consumer read.
-            repaired[key] = entered.get(key)
+            # Unhooked, since the instrumentation counts a subscript as a read a consumer made.
+            repaired[key] = dict.__getitem__(entered, key)
+            restored = (key, entered)
             break
     else:
         repaired.pop(key, None)
-    repaired[_Open] = tuple(block for block in chain if block is not leaving)
-    return _reinstrument(repaired, current)
+    surviving = tuple(block for block in chain if block is not leaving)
+    repaired[_Open] = surviving
+    return _reinstrument(repaired, current, surviving, restored=restored)
 
 
 class _Provider(Generic[T]):
@@ -635,6 +638,12 @@ def use(key: Any, *, default: Any = _MISSING) -> Any:
     return _resolve_miss(key, default)
 
 
+def _open_chain() -> tuple[_Provider[Any], ...]:
+    """Return the blocks open right now, unhooked so asking is not itself a read."""
+    chain: tuple[_Provider[Any], ...] = dict.get(_registry_get(), _Open, ())
+    return chain
+
+
 def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
     """Finish a lookup that missed the registry.
 
@@ -652,10 +661,10 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
             raise TypeError(
                 f"use() received what lazy() returned, which is a target rather than a key. "
                 f"Open it with provider(lazy({name}, factory)) and read it with use({name})"
-            ) from None
+            )
         raise TypeError(
             f"use() expects a string name or a class, got {type(target).__name__}: {target!r}"
-        ) from None
+        )
     if isinstance(target, type):
         factory = _defaults.get(target)
         if factory is not None:
@@ -663,21 +672,19 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
             if _pending or target in _fired:
                 _note_fallback(target)
             if _debug_state.auditing:
-                _record_fallback(_registry_get(), target, "set_default")
+                _record_fallback(target, "set_default", _open_chain())
             return factory()
     if default is not _MISSING:
         if _debug_state.auditing:
-            _record_fallback(_registry_get(), target, "default")
+            _record_fallback(target, "default", _open_chain())
         return default
     # The resolved target, since that is what a provider registered under.
     recording = _debug_state.recording
     diagnosis = _diagnose(target) if recording else None
-    available = [k for k in _registry.get() if k is not _Open]
-    # from None because the @inject wrapper calls this inside its own except KeyError,
-    # where use() calls it outside one, and a caller must not see that difference.
+    available = [k for k in _registry_get() if k is not _Open]
     raise NoProviderError(
         key, available, diagnosis, provided_by=_expected_at(target), offer_debug=not recording
-    ) from None
+    )
 
 
 def active() -> Mapping[str | type[Any], Any]:
@@ -689,7 +696,7 @@ def active() -> Mapping[str | type[Any], Any]:
     """
     registry = _registry.get()
     if _Open in registry:
-        # A counting registry always carries _Open, so the filter is also the uncounting copy.
+        # An instrumented registry always carries _Open, so the filter is also the plain copy.
         registry = {key: value for key, value in registry.items() if key is not _Open}
     return MappingProxyType(registry)
 

@@ -2,10 +2,11 @@
 
 Not a console script, so nothing lands on a PATH and the package still
 declares none, which leaves adding one later possible and removing one never
-necessary.  No __name__ guard, since a __main__ module is only ever run as
-one and a guard would be a branch nothing can take the other way.
+necessary.  Guarded, since importing a module must not exit the process that
+imported it, and a package walker imports this one like any other.
 """
 
 from ._audit import main
 
-raise SystemExit(main())
+if __name__ == "__main__":
+    raise SystemExit(main())

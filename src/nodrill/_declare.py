@@ -22,7 +22,7 @@ from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any, Literal, TypeVar, overload
 
-from ._errors import _KEY_TYPES, _describe_key, _Key
+from ._errors import _KEY_TYPES, _counted, _describe_key, _Key
 from ._refs import _PENDING, _during_import, _is_ref, _Ref, _resolutions
 
 T = TypeVar("T")
@@ -300,7 +300,7 @@ def _report_lines() -> list[str]:
     counts = sorted(dict(_fired).items(), key=lambda item: _describe_key(item[0]))
     lines = [
         f"nodrill declare: the 'suspicious' fallback for {_describe_key(target)} has fired "
-        f"{count} time{'' if count == 1 else 's'}."
+        f"{_counted(count, 'time')}."
         for target, count in counts
         if count
     ]

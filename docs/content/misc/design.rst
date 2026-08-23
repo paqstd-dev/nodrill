@@ -478,6 +478,8 @@ That choice was forced rather than preferred.
 A compiled :func:`~nodrill.inject` wrapper binds its registry accessor at decoration, so patching a module afterwards does not reach it, and swapping ``use`` or installing a pytest plugin would record every plain lookup and none of the injected ones.
 Emitting a recording branch from the codegen instead would make an enabled and a disabled wrapper two different compiled artefacts, which is the one thing the wrapper's design does not allow.
 The wrapper's registry read is a subscript inside a ``try`` for the same reason it is fast, and that spelling is now load-bearing twice over, since a read through ``get`` is deliberately not recorded.
+The miss it falls through to runs after the handler and not inside it, so nothing a :func:`~nodrill.set_default` factory raises arrives chained to a ``KeyError`` the caller never wrote, and a hit still skips the handler entirely.
+A subscript in a ``try`` wins on the hit and loses on the miss, by about as much again, which is the right trade only because a parameter answered by a provider is the common case and one answered by a fallback takes the miss path on every call.
 
 An entry point is the key of a provider block with no block open above it, or of one that ``NODRILL_CONTRACT_ENTRY`` names.
 The first rule alone was the original design and it does not survive contact with an ordinary application.
@@ -488,11 +490,18 @@ Outermost is read off the chain of open blocks, not off the kind of mapping a bl
 The difference matters because a block closing out of order leaves a repaired mapping that outlives its own chain, and asking "was the mapping I inherited an instrumented one" would hand that dead mapping's label to the next boundary that opened.
 The chain is already computed one line further down in the same method, so the correct rule is also the cheaper one.
 
-The label travels on the registry, which is what makes it survive a task, a wrapped thread and a repair, and the repair carries it for the same reason it carries the counting table.
+The label travels on the registry, which is what makes it survive a task, a wrapped thread and a repair.
+A repair derives it again from the chain that survived rather than copying the one the replaced mapping held, since the block that minted that label may be the one that just left.
+The key a repair restores is credited to the block it was restored from, for the same reason and by the same rule, so the next read of it counts for a block that is still open.
+
+What the recorder keeps is capped.
+An entry point is a provider key, and a key built per request mints one entry point per request, so the set would otherwise grow for as long as the process lives and the file would hold one line per request.
+The cap says on standard error that the run stopped being one a contract can rest on, and names the variable that turns a per-request key back into one boundary.
 
 A consumer read is a subscript.
-:func:`~nodrill.use` and the compiled wrapper both read the registry with ``[]``, and everything the library does to a registry for its own reasons, the open chain, an ``extend=True`` merge and the out-of-order repair, reads it with ``get``, so the recorder can tell a read that a user wrote from a read that the library did without being told which is which.
-The instrumented registry also sees what a caller passed rather than what the registry stores, so a :func:`~nodrill.ref` arrives unresolved and is resolved before it is recorded.
+:func:`~nodrill.use` and the compiled wrapper both read the registry with ``[]``, and everything the library does to a registry for its own reasons, the open chain, an ``extend=True`` merge and the out-of-order repair, reads it unhooked through ``dict`` itself or through ``get``, so the recorder can tell a read that a user wrote from a read that the library did without being told which is which.
+The instrumented registry also sees what a caller passed rather than what the registry stores, so a :func:`~nodrill.ref` arrives unresolved and is resolved before it is recorded, and anything else is rendered by its ``repr`` rather than raising out of instrumentation that is supposed to be passive.
+The repair reads through ``dict.__getitem__`` rather than through ``get``, which keeps it invisible to both the recorder and the read counter and still raises if the key it is restoring is ever missing.
 
 The recorder sits above the defaults probe in the miss path rather than on the raise.
 A :func:`~nodrill.set_default` factory and a ``use(key, default=...)`` both return before anything reports a miss, so a lookup that a registration is quietly answering is invisible to anything watching for the error, and that lookup is the one the whole feature exists to surface.
@@ -505,8 +514,16 @@ The verb carries the whole answer, ``requires`` or ``set_default`` or ``default`
 
 The switch is an environment variable read once at import, because a child interpreter inherits one.
 That is what makes a suite that spawns subprocesses, runs under ``xdist`` or uses a process pool record without a special case for any of them.
-A pool worker needs one more thing, since :mod:`multiprocessing` exits a worker through :func:`os._exit`, which runs finalizers and never :mod:`atexit`, so the dump is registered both ways and made idempotent rather than registered once and lost.
+A pool worker needs two more things.
+:mod:`multiprocessing` exits a worker through :func:`os._exit`, which runs finalizers and never :mod:`atexit`, so the dump is registered both ways and made idempotent rather than registered once and lost.
+A fork then clears the finalizer registry before the worker body runs, so the child registers the finalizer again from an after-fork hook, which is the one callback :mod:`multiprocessing` runs after that clear.
+The directory is resolved to an absolute path when the variable is read, since the hooks run at exit and a program that changed directory would otherwise write somewhere nobody looks.
 Each process of a run shares a run id minted at arming and written back into the environment, so a directory reused by a later run yields the newer contract rather than the union of both.
+That inheritance works through the environment, so it reaches a child and not a sibling started by a runner that never imported the library, which is why the variable can also be set from outside.
+
+Everything the reader can be handed is a file somebody else wrote.
+A shard truncated by a killed worker, one from a version this reader does not know, one carrying a verb nothing writes, are each a message and the exit code the reference page promises, never a traceback out of a command line.
+The recorder's own write is held to the same rule from the other side, since it runs in an exit hook where a raise is a traceback the process still exits zero after.
 
 isolate()
 ---------

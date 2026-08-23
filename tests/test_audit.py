@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import importlib
 import multiprocessing.util
 import os
 import runpy
@@ -15,10 +16,10 @@ from typing import Any
 
 import pytest
 
+import nodrill
 from nodrill import NoProviderError, provider, ref, set_default, use, wrap
 from nodrill._audit import (
     _contract,
-    _counted,
     _declared,
     _dump,
     _merge,
@@ -29,8 +30,17 @@ from nodrill._audit import (
     _unseen,
     main,
 )
-from nodrill._debug import _arm, _declared_entries, _reads, _state
-from tests.audit_app.app import User, open_connection, run_job, run_report, running, serve_http
+from nodrill._debug import _arm, _declared_entries, _reads, _recording, _state
+from nodrill._errors import _counted
+from tests.audit_app.app import (
+    Settings,
+    User,
+    open_connection,
+    run_job,
+    run_report,
+    running,
+    serve_http,
+)
 
 _ROOT = Path(__file__).parent.parent
 HEADER = "# nodrill contract 1"
@@ -40,28 +50,16 @@ TAB = "\t"
 
 @pytest.fixture
 def recording() -> Iterator[set[tuple[str, str, str]]]:
-    """Turn the audit on for one test, which no public name does on purpose."""
-    # Saved and restored rather than switched off, since a process may be recording for real.
-    saved = (_state.auditing, _state.watching, set(_reads), set(_declared_entries))
-    _reads.clear()
-    _state.auditing = True
-    _state.watching = True
-    try:
-        yield _reads
-    finally:
-        _state.auditing, _state.watching = saved[0], saved[1]
-        _reads.clear()
-        _reads.update(saved[2])
-        _declared_entries.clear()
-        _declared_entries.update(saved[3])
+    """Turn the audit on for one test, through the seam the module owns."""
+    with _recording() as reads:
+        yield reads
 
 
 @pytest.fixture
-def declaring(recording: set[tuple[str, str, str]]) -> set[tuple[str, str, str]]:
+def declaring() -> Iterator[set[tuple[str, str, str]]]:
     """Name the app's two boundaries the way NODRILL_CONTRACT_ENTRY does."""
-    # The recording fixture restores the declared set, so this one only has to fill it.
-    _declared_entries.update({"'http request'", "'celery worker'"})
-    return recording
+    with _recording({"'http request'", "'celery worker'"}) as reads:
+        yield reads
 
 
 @pytest.fixture
@@ -69,9 +67,16 @@ def armed(recording: set[tuple[str, str, str]]) -> Iterator[list[tuple[Any, ...]
     """Collect what _arm registers, so a test never leaves a real hook on this process."""
     calls: list[tuple[Any, ...]] = []
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(atexit, "register", lambda *call: calls.append(call))
+        patch.setattr(atexit, "register", lambda *call: calls.append(("atexit", call)))
         patch.setattr(
-            multiprocessing.util, "Finalize", lambda *call, **kw: calls.append((call, kw))
+            multiprocessing.util,
+            "Finalize",
+            lambda *call, **kw: calls.append(("finalize", (call, kw))),
+        )
+        patch.setattr(
+            multiprocessing.util,
+            "register_after_fork",
+            lambda obj, func: calls.append(("after fork", (obj, func))),
         )
         yield calls
 
@@ -128,6 +133,27 @@ class TestWhatARunRecords:
         use(Loose)
         assert _entries(recording) == {"(none)"}
 
+    def test_a_fallback_after_every_block_closed_has_no_entry_point(self, recording: Any) -> None:
+        """A repair leaves its mapping installed, and a dead boundary must not be blamed."""
+
+        class Loose:
+            pass
+
+        set_default(Loose, Loose)
+
+        def tenant(slug: str) -> Iterator[None]:
+            with provider("tenant", slug=slug):
+                yield
+                yield
+
+        with provider("http request", route="/"):
+            first, second = tenant("acme"), tenant("globex")
+            list(zip(first, second, strict=False))
+            list(first)
+            list(second)
+        use(Loose)
+        assert f"(none){TAB}set_default{TAB}" in _facts(recording).pop()
+
     def test_two_classes_of_the_same_name_stay_apart(self, recording: Any) -> None:
         class User:  # the point is that this collides with the app's User
             pass
@@ -137,6 +163,51 @@ class TestWhatARunRecords:
         recorded = {line for line in _facts(recording) if "User" in line}
         assert len(recorded) == 1
         assert f"{APP}:User" not in next(iter(recorded))
+
+
+class TestWhatTheRecorderRefusesToCost:
+    """Instrumentation is passive, so it caps what it keeps and never raises on what it sees."""
+
+    def test_an_entry_point_carrying_data_stops_rather_than_growing_without_bound(
+        self, recording: Any, monkeypatch: pytest.MonkeyPatch, capsys: Any
+    ) -> None:
+        """A boundary keyed per request mints one entry point per request, which is unbounded."""
+        monkeypatch.setattr("nodrill._debug._READS_LIMIT", 2)
+        for number in range(5):
+            with provider(f"request-{number}"), provider("db", dsn="x"):
+                use("db")
+        assert len(recording) == 2
+        said = capsys.readouterr().err
+        assert "stopped recording" in said
+        assert "NODRILL_CONTRACT_ENTRY" in said
+
+    def test_the_cap_says_so_once(
+        self, recording: Any, monkeypatch: pytest.MonkeyPatch, capsys: Any
+    ) -> None:
+        monkeypatch.setattr("nodrill._debug._READS_LIMIT", 1)
+        for number in range(4):
+            with provider(f"request-{number}"), provider("db", dsn="x"):
+                use("db")
+        assert capsys.readouterr().err.count("stopped recording") == 1
+
+    def test_a_key_the_recorder_did_not_expect_is_rendered_and_not_raised_on(
+        self, recording: Any
+    ) -> None:
+        """Turning the recorder on must not make a lookup that works in production raise."""
+
+        class Alias:
+            """Hashes and compares as the string key, which the registry answers on."""
+
+            def __hash__(self) -> int:
+                return hash("db")
+
+            def __eq__(self, other: object) -> bool:
+                return other == "db"
+
+        alias: Any = Alias()
+        with provider("http request"), provider("db", dsn="x"):
+            assert use(alias).dsn == "x"
+        assert any("Alias object at" in key for _, _, key in recording)
 
 
 class TestTheCollapseAndTheDeclaration:
@@ -202,10 +273,38 @@ class TestWhatARaiseWouldNeverReport:
 
     @pytest.mark.parametrize("call", [lambda: use(User), open_connection], ids=["use", "inject"])
     def test_a_miss_carries_no_internal_exception(self, call: Any) -> None:
-        """The wrapper resolves inside its own except KeyError and must not show it."""
+        """The wrapper looks up in a try and must leave the handler before the miss runs."""
         with pytest.raises(NoProviderError) as raised:
             call()
-        assert raised.value.__suppress_context__
+        assert raised.value.__context__ is None
+
+    @pytest.mark.parametrize(
+        "call", [lambda: use(Settings), open_connection], ids=["use", "inject"]
+    )
+    def test_a_factory_that_raises_is_not_chained_onto_the_lookup(self, call: Any) -> None:
+        """A set_default factory runs on the miss path, and its failure is the whole story."""
+
+        def boom() -> Settings:
+            raise ValueError("the real failure")
+
+        set_default(Settings, boom)
+        with pytest.raises(ValueError, match="the real failure") as raised:
+            call()
+        assert raised.value.__context__ is None
+
+    def test_a_miss_keeps_the_exception_its_caller_was_handling(self) -> None:
+        """Suppressing every context would hide the error a cleanup path is recovering from."""
+
+        def cleanup() -> None:
+            try:
+                raise ValueError("the real failure")  # noqa: TRY301
+            except ValueError:
+                use(User)
+
+        with pytest.raises(NoProviderError) as raised:
+            cleanup()
+        assert isinstance(raised.value.__context__, ValueError)
+        assert not raised.value.__suppress_context__
 
 
 class TestTheLabelSurvivesTheAwkwardPaths:
@@ -297,14 +396,34 @@ class TestTheSwitch:
         assert "'a'" in _declared_entries
         # Written back so a child interpreter joins this run rather than starting one.
         assert environ["NODRILL_CONTRACT_RUN"]
-        # Both, since a pool worker exits through os._exit and never runs atexit.
-        assert len(armed) == 2
+        # A pool worker exits through os._exit, and a fork clears what the parent registered.
+        assert [name for name, _ in armed] == ["atexit", "finalize", "after fork"]
+
+    def test_a_forked_child_registers_the_finalizer_the_fork_cleared(
+        self, tmp_path: Path, armed: list[tuple[Any, ...]]
+    ) -> None:
+        """A fork clears the registry before a worker body runs, so the hook is registered again."""
+        _arm({"NODRILL_CONTRACT": str(tmp_path)})
+        [(_, (_, after_fork))] = [call for call in armed if call[0] == "after fork"]
+        armed.clear()
+        after_fork(None)
+        assert [name for name, _ in armed] == ["finalize"]
+
+    def test_a_relative_directory_is_resolved_while_the_program_is_still_there(
+        self, tmp_path: Path, armed: list[tuple[Any, ...]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The hooks run at exit, by which time the program may have moved."""
+        monkeypatch.chdir(tmp_path)
+        _arm({"NODRILL_CONTRACT": ".nodrill"})
+        [(_, call)] = [entry for entry in armed if entry[0] == "atexit"]
+        assert Path(call[1]).is_absolute()
 
     def test_an_inherited_run_is_kept(self, tmp_path: Path, armed: list[tuple[Any, ...]]) -> None:
         environ = {"NODRILL_CONTRACT": str(tmp_path), "NODRILL_CONTRACT_RUN": "given"}
         _arm(environ)
         assert environ["NODRILL_CONTRACT_RUN"] == "given"
-        assert all("given" in repr(call) for call in armed)
+        registered = [call for name, call in armed if name in {"atexit", "finalize"}]
+        assert all("given" in repr(call) for call in registered)
 
     def test_a_run_with_the_switch_off_records_nothing(
         self, monkeypatch: pytest.MonkeyPatch
@@ -364,6 +483,29 @@ class TestTheContractFile:
             _parse(text, "somewhere")
         assert shown in str(raised.value)
 
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [
+            (f"'a'{TAB}requires", "Expected three fields on line 2"),
+            (f"'a'{TAB}requires{TAB}x{TAB}y", "Expected three fields on line 2"),
+            (f"'a'{TAB}invented{TAB}x", "Expected one of"),
+        ],
+        ids=["too few", "too many", "a verb nothing writes"],
+    )
+    def test_a_line_the_format_does_not_allow_is_refused(self, line: str, expected: str) -> None:
+        """A shard is a file on disk, so a half-written one has to be an answer and not a crash."""
+        with pytest.raises(ValueError, match="not a nodrill contract this version reads") as raised:
+            _parse(f"{HEADER}\n{line}\n", "somewhere")
+        assert expected in str(raised.value)
+
+    def test_the_line_ending_belongs_to_the_file_and_not_to_the_platform(
+        self, tmp_path: Path
+    ) -> None:
+        """The whole workflow is a diff, so the bytes cannot depend on who rendered them."""
+        _dump(str(tmp_path), "run", {("'a'", "requires", "x")})
+        [shard] = tmp_path.glob("*.shard")
+        assert b"\r" not in shard.read_bytes()
+
 
 class TestShards:
     """One run is many processes, so the record is written per process and merged."""
@@ -375,7 +517,7 @@ class TestShards:
     def test_a_shard_round_trips(self, tmp_path: Path) -> None:
         reads = {("'a'", "requires", "x"), ("'b'", "default", "y")}
         _dump(str(tmp_path), "run", set(reads))
-        assert _merge(str(tmp_path)) == (reads, 1, 0)
+        assert _merge(tmp_path) == (reads, 1, 0)
 
     def test_dumping_twice_writes_one_shard(self, tmp_path: Path) -> None:
         """A pool worker is finalized as well as registered, so a second dump is a no-op."""
@@ -387,21 +529,48 @@ class TestShards:
     def test_shards_from_several_processes_merge(self, tmp_path: Path) -> None:
         _dump(str(tmp_path), "run", {("'a'", "requires", "x")})
         _dump(str(tmp_path), "run", {("'b'", "requires", "y")})
-        found, shards, stale = _merge(str(tmp_path))
+        found, shards, stale = _merge(tmp_path)
         assert found == {("'a'", "requires", "x"), ("'b'", "requires", "y")}
         assert (shards, stale) == (2, 0)
 
     def test_an_earlier_run_in_the_same_directory_is_left_out(self, tmp_path: Path) -> None:
         first, second = _new_run(), _new_run()
         _dump(str(tmp_path), first, {("'a'", "requires", "gone")})
+        for shard in tmp_path.glob("*.shard"):
+            os.utime(shard, (0, 0))
         _dump(str(tmp_path), second, {("'a'", "requires", "here")})
-        assert _merge(str(tmp_path)) == ({("'a'", "requires", "here")}, 1, 1)
+        assert _merge(tmp_path) == ({("'a'", "requires", "here")}, 1, 1)
+
+    def test_a_run_id_a_ci_system_chose_does_not_outrank_a_later_one(self, tmp_path: Path) -> None:
+        """A run id is inheritable, so it may be any string and cannot be ordered as a number."""
+        _dump(str(tmp_path), "build-42", {("'a'", "requires", "gone")})
+        for shard in tmp_path.glob("*.shard"):
+            os.utime(shard, (0, 0))
+        _dump(str(tmp_path), _new_run(), {("'a'", "requires", "here")})
+        assert _merge(tmp_path) == ({("'a'", "requires", "here")}, 1, 1)
 
     def test_an_empty_directory_merges_to_nothing(self, tmp_path: Path) -> None:
-        assert _merge(str(tmp_path)) == (set(), 0, 0)
+        assert _merge(tmp_path) == (set(), 0, 0)
 
     def test_a_run_id_is_unique(self) -> None:
         assert _new_run() != _new_run()
+
+    def test_a_directory_it_cannot_write_is_a_message_and_not_two_tracebacks(
+        self, tmp_path: Path, capsys: Any
+    ) -> None:
+        """The dump runs from an exit hook, where a raise is a traceback and never a failure."""
+        blocked = tmp_path / "blocked"
+        blocked.write_text("not a directory", encoding="utf-8")
+        reads = {("'a'", "requires", "x")}
+        _dump(str(blocked), "run", reads)
+        assert "cannot record to" in capsys.readouterr().err
+        # Forgotten anyway, or the finalizer would reproduce the same failure a second time.
+        assert not reads
+
+    def test_a_shard_the_reader_refuses_is_named(self, tmp_path: Path, capsys: Any) -> None:
+        (tmp_path / "1-x.shard").write_text("nonsense\n", encoding="utf-8")
+        assert _contract(str(tmp_path), None, frozenset()) == 1
+        assert "cannot read the run at" in capsys.readouterr().err
 
 
 class TestWhatTheToolAdmits:
@@ -481,6 +650,13 @@ class TestTheCommandLine:
         with pytest.raises(SystemExit):
             main(["contract", "--fro", str(tmp_path)])
 
+    def test_the_command_says_which_nodrill_wrote_a_contract(self, capsys: Any) -> None:
+        """A format the reader refuses is the moment the version is worth asking for."""
+        with pytest.raises(SystemExit) as raised:
+            main(["--version"])
+        assert raised.value.code == 0
+        assert capsys.readouterr().out.strip() == f"nodrill {nodrill.__version__}"
+
 
 def _child(program: str, directory: Path, entries: str = "") -> subprocess.CompletedProcess[str]:
     """Run a program in a child interpreter with the recorder armed."""
@@ -505,7 +681,7 @@ class TestARecordedRun:
     def test_the_environment_variable_arms_a_whole_process(self, tmp_path: Path) -> None:
         program = f"from {APP} import running, serve_http\nwith running(): serve_http('ada')"
         _child(program, tmp_path)
-        reads, _, _ = _merge(str(tmp_path))
+        reads, _, _ = _merge(tmp_path)
         assert f"{APP}:Settings{TAB}requires{TAB}{APP}:User" in _render(reads)
 
     def test_declaring_the_boundaries_splits_the_entry_points(self, tmp_path: Path) -> None:
@@ -515,7 +691,7 @@ class TestARecordedRun:
             tmp_path,
             entries="'http request','celery worker'",
         )
-        reads, _, _ = _merge(str(tmp_path))
+        reads, _, _ = _merge(tmp_path)
         assert _entries(reads) == {"'http request'", "'celery worker'"}
 
     def test_a_subprocess_the_run_spawns_joins_the_same_run(self, tmp_path: Path) -> None:
@@ -527,7 +703,7 @@ class TestARecordedRun:
             f" 'from {APP} import run_job; run_job(\"grace\")'], check=True)\n"
         )
         _child(program, tmp_path)
-        reads, shards, stale = _merge(str(tmp_path))
+        reads, shards, stale = _merge(tmp_path)
         assert (shards, stale) == (2, 0)
         assert f"'celery worker'{TAB}set_default{TAB}{APP}:Origin" in _render(reads)
 
@@ -541,7 +717,7 @@ class TestARecordedRun:
             "        pool.submit(run_job, 'grace').result()\n"
         )
         _child(program, tmp_path)
-        reads, _, _ = _merge(str(tmp_path))
+        reads, _, _ = _merge(tmp_path)
         assert f"'celery worker'{TAB}requires{TAB}{APP}:User" in _render(reads)
 
     def test_two_runs_of_the_same_program_agree_byte_for_byte(self, tmp_path: Path) -> None:
@@ -549,7 +725,7 @@ class TestARecordedRun:
         first, second = tmp_path / "first", tmp_path / "second"
         _child(program, first)
         _child(program, second)
-        assert _render(_merge(str(first))[0]) == _render(_merge(str(second))[0])
+        assert _render(_merge(first)[0]) == _render(_merge(second)[0])
 
     def test_the_module_runs_as_a_command(self, tmp_path: Path) -> None:
         program = f"from {APP} import running, serve_http\nwith running(): serve_http('ada')"
@@ -573,3 +749,11 @@ class TestARecordedRun:
             runpy.run_module("nodrill", run_name="__main__")
         assert raised.value.code == 1
         assert "nothing recorded" in capsys.readouterr().err
+
+    def test_importing_the_dispatch_does_not_exit_the_process_that_imported_it(self) -> None:
+        """A package walker imports every submodule, and __main__ is one of them."""
+        # Popped again, so the next runpy of it starts from source the way a command line does.
+        try:
+            assert importlib.import_module("nodrill.__main__").main is main
+        finally:
+            sys.modules.pop("nodrill.__main__", None)
