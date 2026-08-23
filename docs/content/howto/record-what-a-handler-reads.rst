@@ -113,7 +113,7 @@ The two boundaries read the same three keys, except that the queue never opens `
 That is a bug the code cannot show you and no test fails on, and it is one line of a diff.
 
 Pass the same value to the command, so it can tell you about a boundary you named that no block opened, which is what a renamed key looks like.
-A boundary that opened and read nothing is a row of the file rather than that message, so the two cases stay apart.
+A boundary that opened and read nothing is a row of the file rather than that message.
 
 Reading the file
 ----------------
@@ -136,7 +136,7 @@ The second field is the one to read.
 
 `opened`
    A boundary you named opened and nothing under it read the context, so the third field is `nothing` rather than a key.
-   It is written only for a boundary that read nothing, which is what keeps a handler reading nothing apart from a boundary the run never reached.
+   It is what keeps a handler that reads nothing apart from a boundary the run never reached.
 
 An entry point of `(none)` means no provider block was open at all, which a read can only survive by falling back.
 It is what an unwrapped worker thread looks like, and what a read at import time looks like.
