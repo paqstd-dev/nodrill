@@ -32,7 +32,7 @@ Individual pieces, for when you want a faster loop.
 | `make format` | ruff format plus the safe ruff fixes |
 | `make lint` | ruff format `--check` and `ruff check` |
 | `make typecheck` | mypy and pyright |
-| `make test` | pytest, narrowed with `make test ARGS="-k inject -x"` |
+| `make test` | pytest, which `make test ARGS="-k inject -x"` narrows |
 | `make testcov` | pytest under coverage with the 100 percent gate |
 | `make docs` | Sphinx with warnings as errors |
 | `make audit` | zizmor over the GitHub Actions workflows |
@@ -44,7 +44,7 @@ A pull request is expected to pass all of it.
 - **Coverage is 100 percent on branches.**
   New code arrives with the tests that cover it.
   A `# pragma: no cover` is not the fix.
-- **Two type checkers.** mypy runs strict over `src` and `tests`, and pyright checks `src`.
+- **Two type checkers.** mypy runs strict over `src` and `tests`, and pyright checks `src` plus `tests/cycle`.
   Both must be clean, and a few API shapes exist only because the two disagree.
 - **Ruff with `select = ["ALL"]`.**
   A new ignore goes in `pyproject.toml` with a comment saying why, rather than a bare `# noqa` at the call site.

@@ -85,9 +85,9 @@ def adopt(
     expects, which is what to reach for when the producer is not yours.
     annotate decides for these blocks what it decides for a provider() block,
     and annotate=False keeps a payload somebody else wrote out of a traceback
-    this process renders.  What no check can say is
-    whether the values are true, and an adopted value is input with the same
-    trust as any other request field.
+    this process renders.  What no check can say is whether the values are
+    true, and an adopted value is input with the same trust as any other
+    request field.
     """
     return _adopting(_adopted(payload, only), annotate=annotate)
 
@@ -114,11 +114,11 @@ def set_codec(*, dump: _Hook | None = None, load: _Hook | None = None) -> None:
     and never writes into it, since the containers below the top level are
     the exporting block's own.  A load runs after the payload has been
     checked, never before, so a malformed one is refused without reaching
-    the codec at all.  Each call states the whole codec, and
-    set_codec() with no arguments clears both, while a service that only
-    produces or only consumes registers the one half it needs.  Both ends of
-    a boundary have to agree on the format, which is why this is startup
-    configuration rather than something a scope decides.
+    the codec at all.  Each call states the whole codec, and set_codec() with
+    no arguments clears both, while a service that only produces or only
+    consumes registers the one half it needs.  Both ends of a boundary have to
+    agree on the format, which is why this is startup configuration rather
+    than something a scope decides.
     """
     for role, hook in (("dump", dump), ("load", load)):
         if hook is not None and not callable(hook):

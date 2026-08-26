@@ -135,7 +135,7 @@ class _SealedProxy(_View):
     def __reduce_ex__(self, protocol: SupportsIndex) -> Any:
         raise TypeError(_UNCOPYABLE)
 
-    # On the class, since copy looks them up on the instance, where __getattr__ answers for it.
+    # On the class, since on the instance __getattr__ would hand copy the target's own hook.
     def __copy__(self) -> Any:
         raise TypeError(_UNCOPYABLE)
 

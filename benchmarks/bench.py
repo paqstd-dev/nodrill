@@ -4,7 +4,7 @@ Without arguments the table goes to stdout, and with --write it replaces the
 one in docs/content/misc/performance.rst between the markers, so the published
 numbers and the script that produced them cannot drift apart.
 
-The first rows are one function doing one read, reached five ways, so the
+The first rows are one function doing one read, reached six ways, so the
 rows are comparable to each other and to handing the value in as a
 parameter, which is what nodrill replaces.  The rest price the things the
 prose claims, entering a scope, entering it with a stack already open, and
@@ -86,7 +86,7 @@ def noop() -> None:
     """Do nothing, so the wrap() row prices wrap() and not its target."""
 
 
-# Labels are the README's row headings, so changing one rewrites the published table.
+# Labels are the performance page's row headings, so changing one rewrites the published table.
 PASSED = "one read in a function, value passed in as a parameter"
 USED = "the same read through `use()`"
 INJECTED = "the same read through `@inject`"

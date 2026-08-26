@@ -1,9 +1,7 @@
 """Dispatch for python -m nodrill, which is the whole command line surface.
 
-Not a console script, so nothing lands on a PATH and the package still
-declares none, which leaves adding one later possible and removing one never
-necessary.  Guarded, since importing a module must not exit the process that
-imported it, and a package walker imports this one like any other.
+Not a console script, so nothing lands on a PATH and the package still declares
+none, which leaves adding one later possible and removing one never necessary.
 """
 
 from ._audit import main

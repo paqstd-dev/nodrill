@@ -56,7 +56,7 @@ def running() -> Iterator[None]:
 
 
 def serve_http(name: str) -> str:
-    """The web entry point, which opens both keys the handler reads."""
+    """The web entry point, which opens every key the handler reads but the settings."""
     with provider("http request", route="/writes"), provider(User(name)):
         with provider(Origin("http")):
             return f"{record_write()} {open_connection()} {use('http request').route}"
