@@ -74,7 +74,7 @@ def _visible(reads: _Reads) -> _Reads:
 def _refuse(source: str, saw: str, expected: str) -> ValueError:
     """Build the one refusal, so a caller can say which file and what it expected."""
     return ValueError(
-        f"{source} is not a nodrill contract this version reads. {expected}, found {saw!r}"
+        f"{source} is not a nodrill contract this version reads. {expected}, found {saw}"
     )
 
 
@@ -82,16 +82,16 @@ def _parse(text: str, source: str) -> _Reads:
     """Read a contract or a shard back, refusing anything this reader does not know."""
     lines = text.splitlines()
     if not lines or lines[0] != _HEADER:
-        opening = lines[0] if lines else "an empty file"
+        opening = repr(lines[0]) if lines else "an empty file"
         raise _refuse(source, opening, f"Expected {_HEADER!r} on the first line")
     found: _Reads = set()
     for number, line in enumerate(lines[1:], start=2):
         fields = line.split(_GAP)
         if len(fields) != 3:  # noqa: PLR2004
-            raise _refuse(source, line, f"Expected three fields on line {number}")
+            raise _refuse(source, repr(line), f"Expected three fields on line {number}")
         entry, verb, key = fields
         if verb not in _VERBS:
-            raise _refuse(source, verb, f"Expected one of {sorted(_VERBS)} on line {number}")
+            raise _refuse(source, repr(verb), f"Expected one of {sorted(_VERBS)} on line {number}")
         found.add((entry, verb, key))
     return found
 
@@ -158,7 +158,7 @@ def _summary(reads: _Reads, shards: int, stale: int) -> str:
         f"A contract is only as complete as the run that recorded it."
     )
     if stale:
-        said += f" {_counted(stale, 'shard')} from an earlier run were left out."
+        said += f" Left out {_counted(stale, 'shard')} from an earlier run."
     return said
 
 

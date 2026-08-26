@@ -618,8 +618,11 @@ class TestWhatTheToolAdmits:
             "nodrill: 1 fact under 1 entry point, recorded from 1 process."
         )
 
-    def test_shards_left_out_are_said_rather_than_dropped_quietly(self) -> None:
-        assert _summary(set(), 1, 3).endswith("3 shards from an earlier run were left out.")
+    @pytest.mark.parametrize(("stale", "said"), [(1, "1 shard"), (3, "3 shards")])
+    def test_shards_left_out_are_said_rather_than_dropped_quietly(
+        self, stale: int, said: str
+    ) -> None:
+        assert _summary(set(), 1, stale).endswith(f"Left out {said} from an earlier run.")
 
     @pytest.mark.parametrize(
         ("count", "rendered"), [(0, "0 processes"), (1, "1 process"), (2, "2 processes")]

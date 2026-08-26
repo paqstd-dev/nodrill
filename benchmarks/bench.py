@@ -255,6 +255,8 @@ def carried(document: str) -> str:
     end = document.index(END, start)
     block = document[start:end].splitlines()
     rules = [number for number, line in enumerate(block) if line.startswith("==")]
+    if not rules:
+        return ""
     return "\n".join(block[rules[0] : rules[-1] + 1])
 
 
