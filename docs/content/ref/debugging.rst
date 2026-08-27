@@ -66,7 +66,7 @@ debug
 
    Debug mode is not for production.
    Every provider entered reads the stack and writes to the ledger, while a lookup that hits costs what it costs with debug mode off.
-   ``unused=True`` puts a counting registry in front of every read on top of that, which is roughly three times a plain hit.
+   ``unused=True`` puts a counting registry in front of every read on top of that, which :ref:`misc-performance` prices at roughly three and a half times a plain hit.
 
    :ref:`howto-find-out-why-the-context-is-missing` runs all of it on a live program.
 
