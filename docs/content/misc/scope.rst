@@ -43,10 +43,11 @@ What is not in this release
 
 No framework integrations.
 No middleware, no plugins, no ASGI helpers.
+No pytest plugin either, which is why the contract recorder in :doc:`/content/howto/record-what-a-handler-reads` is a command armed by an environment variable, so a test runner this library has never heard of records the same way.
 
 No global singletons.
 All state that flows with a call lives in :mod:`contextvars`.
-The exceptions are configuration and instrumentation, the ``set_default`` and :func:`~nodrill.declare` tables written at import time, the ledger :func:`~nodrill.debug` keeps while it is on with the fallback counter beside the declare catalogue, and the two switches :func:`~nodrill.annotate_exceptions` and :func:`~nodrill.set_codec` set at startup.
+The exceptions are configuration and instrumentation, the ``set_default`` and :func:`~nodrill.declare` tables written at import time, the ledger :func:`~nodrill.debug` keeps while it is on with the fallback counter beside the declare catalogue, the contract table the recorder fills while ``NODRILL_CONTRACT`` is set, and the two switches :func:`~nodrill.annotate_exceptions` and :func:`~nodrill.set_codec` set at startup.
 
 No lifecycle management.
 Nothing is constructed, cached, pooled, or closed on your behalf.

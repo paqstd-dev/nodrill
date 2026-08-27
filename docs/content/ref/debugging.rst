@@ -66,9 +66,69 @@ debug
 
    Debug mode is not for production.
    Every provider entered reads the stack and writes to the ledger, while a lookup that hits costs what it costs with debug mode off.
-   ``unused=True`` puts a counting registry in front of every read on top of that, which is roughly three times a plain hit.
+   ``unused=True`` puts a counting registry in front of every read on top of that, which :ref:`misc-performance` prices at roughly three and a half times a plain hit.
 
    :ref:`howto-find-out-why-the-context-is-missing` runs all of it on a live program.
+
+.. _ref-contract:
+
+Recording a contract
+--------------------
+
+``NODRILL_CONTRACT`` names a directory and turns on recording of what each entry point reads.
+It is read once, at import, like ``NODRILL_DEBUG``, and any non-empty value is a directory rather than a switch, so ``0`` names a directory called ``0``.
+Every process of a run writes its own file there, including one a suite spawns, and the files are merged when the contract is rendered.
+A relative directory is resolved when the variable is read, and the resolved directory is written back into the environment, so a program that changes directory and a child that starts in another one both write where the run was armed.
+Recording puts an instrumented registry in front of every read, at the same cost ``unused=True`` pays, so it belongs in a suite rather than in production.
+
+``NODRILL_CONTRACT_ENTRY`` names the provider keys that are boundaries, as rendered keys separated by commas, so ``"'http request',myapp.web:Request"``.
+A block whose key is named mints its own entry point even when a block is open above it.
+Without it the entry point is whatever block is outermost, which in an application that opens configuration above its server loop is that configuration.
+
+.. code-block:: bash
+
+   NODRILL_CONTRACT=.nodrill NODRILL_CONTRACT_ENTRY="'http request'" pytest
+   python -m nodrill contract --from .nodrill --write nodrill.contract
+
+``NODRILL_CONTRACT_RUN`` groups the processes of one run, and is written into the environment by the first process that reads ``NODRILL_CONTRACT``.
+A child inherits it and joins the run, while a worker whose parent never imported nodrill would start a run of its own, which the merge then reports as shards left out.
+Setting it yourself is how a runner that starts its workers directly, such as ``pytest -n`` from a controller that never imports the library, keeps one run.
+
+``python -m nodrill contract`` renders what a run recorded.
+``--from`` names the directory and is required, ``--write`` names the file and defaults to standard output, and the summary of what the contract rests on always goes to standard error so the artefact can be piped.
+It returns ``0`` when it rendered a contract and ``1`` when it could not, leaving ``2`` to mean the command line itself was wrong.
+A shard it cannot read is a message and the exit code, never a traceback, and ``python -m nodrill --version`` says which nodrill is reading.
+
+:doc:`/content/howto/record-what-a-handler-reads` is the task-shaped version, with a program to run and what the file is worth.
+
+.. _ref-contract-file:
+
+The contract file
+~~~~~~~~~~~~~~~~~
+
+A shard and a rendered contract carry one format, ``# nodrill contract 1`` on the first line and one fact per line under it, sorted, UTF-8 with ``\n`` endings whatever the platform.
+A reader refuses a first line it does not know rather than guessing at it, so a file a later version wrote is a message and an exit code.
+
+A fact is three tab-separated fields, the entry point, the verb, and the key.
+The entry point and the key are both rendered the way :func:`~nodrill.ref` spells one, ``myapp.web:Request`` for a class and ``'http request'`` for a string, quotes included, which is also what keeps a key holding a tab or a newline on one line.
+
+The verb says how the read was answered.
+
+``requires``
+   A provider answered, which is the ordinary case.
+
+``set_default``
+   No provider was open and a :func:`~nodrill.set_default` factory answered instead.
+   Every one of these is a boundary that leaves a key to a fallback.
+
+``default``
+   No provider was open and the ``use(key, default=...)`` at the call site answered.
+
+``opened``
+   A boundary ``NODRILL_CONTRACT_ENTRY`` names opened and nothing under it read the context, so the third field is the word ``nothing`` rather than a key.
+   It is dropped again as soon as that boundary has a read of its own, and it is what keeps a handler that reads nothing apart from a boundary the run never reached.
+
+An entry point of ``(none)`` is a read with no provider block open above it at all, which only a fallback survives, so an unwrapped worker thread and a read at import time both land there.
 
 explain
 -------
@@ -144,7 +204,7 @@ annotate_exceptions
 
    Rendering runs the value's ``__repr__`` while the block is unwinding, which is the one place this library calls user code on an exception path.
    A ``__repr__`` that blocks on a lock the raising frame is holding blocks the unwind with it, so keep one cheap, and use ``annotate=False`` for a value whose ``__repr__`` is neither.
-   An exception that refuses the note, a frozen dataclass exception among them, keeps its own failure and simply goes unannotated.
+   An exception that refuses the note, a frozen dataclass exception among them, keeps its own failure and goes unannotated.
    One exception object raised out of the same block on every attempt of a retry loop collects one note per attempt, since a note records a block the exception left rather than a block that was open.
 
    Only an :exc:`Exception` is annotated.

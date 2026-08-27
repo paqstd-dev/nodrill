@@ -15,7 +15,14 @@ from types import MappingProxyType, TracebackType
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, overload
 
 from ._ambient import _ambient
-from ._debug import _diagnose, _record_enter, _record_exit, _recount, _user_site
+from ._debug import (
+    _diagnose,
+    _record_enter,
+    _record_exit,
+    _record_fallback,
+    _reinstrument,
+    _user_site,
+)
 from ._debug import _state as _debug_state
 from ._declare import _expected_at, _fired, _note_fallback, _pending
 from ._declare import _restore as _restore_declared
@@ -35,6 +42,8 @@ _EMPTY_REGISTRY: dict[str | type[Any], Any] = {}
 _registry: ContextVar[dict[str | type[Any], Any]] = ContextVar(
     "nodrill_registry", default=_EMPTY_REGISTRY
 )
+# Bound once for the two hot readers, the way the @inject wrapper already binds it at decoration.
+_registry_get = _registry.get
 
 # Configuration rather than per-context state, so deliberately not a ContextVar.
 _defaults: dict[type[Any], Callable[[], Any]] = {}
@@ -110,16 +119,20 @@ def _repaired(
     """
     repaired = dict(current)
     key = leaving._key  # noqa: SLF001
+    restored: tuple[str | type[Any], dict[str | type[Any], Any]] | None = None
     # Innermost first, so the first block still open under the key is the one that owns it now.
     for open_block in reversed(chain):
         entered = open_block._entered  # noqa: SLF001
         if open_block is not leaving and entered is not None and open_block._key == key:  # noqa: SLF001
-            repaired[key] = entered[key]
+            # Unhooked, since the instrumentation counts a subscript as a read a consumer made.
+            repaired[key] = dict.__getitem__(entered, key)
+            restored = (key, entered)
             break
     else:
         repaired.pop(key, None)
-    repaired[_Open] = tuple(block for block in chain if block is not leaving)
-    return _recount(repaired, current)
+    surviving = tuple(block for block in chain if block is not leaving)
+    repaired[_Open] = surviving
+    return _reinstrument(repaired, current, surviving, restored=restored)
 
 
 class _Provider(Generic[T]):
@@ -173,13 +186,14 @@ class _Provider(Generic[T]):
             # A fresh scope per entry, which is what stops a re-entry reviving the last one.
             self._scope = scope = _Scope(self._key, _user_site()[0])
             value, public = _sealed_views(value, public, scope)
-        enclosing = _registry.get()
+        enclosing = _registry_get()
         updated = dict(enclosing)
         updated[self._key] = public
-        if _debug_state.recording:
-            self._block, updated = _record_enter(self._key, enclosing, updated)
+        chain = enclosing.get(_Open, ())
+        if _debug_state.watching:
+            self._block, updated = _record_enter(self._key, enclosing, updated, outermost=not chain)
         # After the ledger, so the chain lands on the mapping actually installed.
-        updated[_Open] = (*enclosing.get(_Open, ()), self)
+        updated[_Open] = (*chain, self)
         self._entered = updated
         self._token = _registry.set(updated)
         return value
@@ -380,8 +394,7 @@ class _Sealing:
 
     _sealed = True
 
-    # What the mixin reads off whichever provider it sits in front of, declared because
-    # a self typed as that host would leave super() with nothing to resolve against.
+    # Declared here, since a self typed as the host provider leaves super() nothing to resolve.
     _scope: _Scope
     _token: Token[dict[str | type[Any], Any]] | None
 
@@ -415,20 +428,29 @@ class _SealedExtendingProvider(_Sealing, _ExtendingProvider):
     __slots__ = ()
 
 
-def _refuse_data_flags(**flags: Any) -> None:
+def _data_flag_error(name: str, value: Any) -> TypeError:
+    """Report a flag handed data, naming the namespace spelling that wanted it."""
+    return TypeError(
+        f"provider({name}=...) is a flag and cannot carry data, and "
+        f"{value!r} would turn it on as well as vanish. For a namespace "
+        f"attribute of that name write "
+        f"provider(Namespace({name}={value!r}, ...), key=<the name>)"
+    )
+
+
+def _refuse_data_flags(frozen: Any, extend: Any, sealed: Any) -> None:
     """Refuse a flag carrying data, which would otherwise eat a namespace attribute.
 
     provider("plan", extend="v1") reads as an attribute and binds the
     parameter, so the value disappears and the feature turns itself on.
     """
-    for name, value in flags.items():
-        if value is not True and value is not False:
-            raise TypeError(
-                f"provider({name}=...) is a flag and cannot carry data, and "
-                f"{value!r} would turn it on as well as vanish. For a namespace "
-                f"attribute of that name write "
-                f"provider(Namespace({name}={value!r}, ...), key=<the name>)"
-            )
+    # Spelled out rather than looped over **flags, which packed a dict on every provider() call.
+    if frozen is not True and frozen is not False:
+        raise _data_flag_error("frozen", frozen)
+    if extend is not True and extend is not False:
+        raise _data_flag_error("extend", extend)
+    if sealed is not True and sealed is not False:
+        raise _data_flag_error("sealed", sealed)
 
 
 @overload
@@ -490,7 +512,7 @@ def provider(
     once the block has exited, so a value captured by a closure or a
     background task reports the escape where it happens.
     """
-    _refuse_data_flags(frozen=frozen, extend=extend, sealed=sealed)
+    _refuse_data_flags(frozen, extend, sealed)
     target = _target_of(args, values)
     if isinstance(target, str):
         if key is not None:
@@ -604,7 +626,7 @@ def use(key: Any, *, default: Any = _MISSING) -> Any:
     instance typed as that class.  A miss tries a set_default() factory,
     then the default argument, then raises NoProviderError.
     """
-    registry = _registry.get()
+    registry = _registry_get()
     try:
         return registry[key]
     except KeyError:
@@ -613,6 +635,12 @@ def use(key: Any, *, default: Any = _MISSING) -> Any:
         # An unhashable key lands here and gets the same message below as any other wrong kind.
         pass
     return _resolve_miss(key, default)
+
+
+def _open_chain() -> tuple[_Provider[Any], ...]:
+    """Return the blocks open right now, unhooked so asking is not itself a read."""
+    chain: tuple[_Provider[Any], ...] = dict.get(_registry_get(), _Open, ())
+    return chain
 
 
 def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
@@ -642,13 +670,17 @@ def _resolve_miss(key: Any, default: Any = _MISSING) -> Any:
             # A suspicious class pays the count, and a pending declaration one resolution check.
             if _pending or target in _fired:
                 _note_fallback(target)
+            if _debug_state.auditing:
+                _record_fallback(target, "set_default", _open_chain())
             return factory()
     if default is not _MISSING:
+        if _debug_state.auditing:
+            _record_fallback(target, "default", _open_chain())
         return default
     # The resolved target, since that is what a provider registered under.
     recording = _debug_state.recording
     diagnosis = _diagnose(target) if recording else None
-    available = [k for k in _registry.get() if k is not _Open]
+    available = [k for k in _registry_get() if k is not _Open]
     raise NoProviderError(
         key, available, diagnosis, provided_by=_expected_at(target), offer_debug=not recording
     )
@@ -663,7 +695,7 @@ def active() -> Mapping[str | type[Any], Any]:
     """
     registry = _registry.get()
     if _Open in registry:
-        # A counting registry always carries _Open, so the filter is also the uncounting copy.
+        # An instrumented registry always carries _Open, so the filter is also the plain copy.
         registry = {key: value for key, value in registry.items() if key is not _Open}
     return MappingProxyType(registry)
 

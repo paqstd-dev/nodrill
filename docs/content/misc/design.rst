@@ -62,6 +62,16 @@ The :func:`~nodrill.declare` catalogue is a second table of exactly that kind, w
 Both are configuration rather than flowing state, and state lives only in ContextVars, with the further exceptions argued for below.
 The suspicious-fallback counter beside the catalogue is instrumentation under the ledger's rules, written on the fallback path and reported by :func:`~nodrill.explain`.
 
+Two spellings on the hot path that look arbitrary
+-------------------------------------------------
+
+``provider()`` checks its three flags one at a time, spelled out, rather than looping over ``**flags``.
+The loop packed a dictionary on every call to catch a mistake almost no call makes, and it was about a seventh of the cost of entering a block.
+The message lives once, in a helper that builds the error rather than raising it, so each of the three tests is still one line.
+
+``use()`` and a provider's ``__enter__`` read the registry through a module-level name bound once at import rather than through the :class:`~contextvars.ContextVar`'s attribute.
+The compiled :func:`~nodrill.inject` wrapper already did exactly this at decoration, and doing it here too is worth about five percent of a read.
+
 The ambient context object
 --------------------------
 
@@ -228,13 +238,13 @@ The registry therefore never holds a ref, so keys stay exactly ``str`` or ``type
 Only the consumer side is deferred, which is the side with the import problem.
 
 Resolution runs without a lock.
-It is deterministic and idempotent — :func:`~importlib.import_module` caches and the attribute walk is pure — so a racing second walk costs a walk and both threads arrive at the one object the module holds.
+It is deterministic and idempotent, since :func:`~importlib.import_module` caches and the attribute walk is pure, so a racing second walk costs a walk and both threads arrive at the one object the module holds.
 The alternative, a lock held across an import, orders this library's lock against the interpreter's own per-module import locks, in the opposite direction from a module body that resolves a ref while it is being imported.
 That is a deadlock, and the same reasoning is why CPython dropped its global import lock.
 A failure is not cached either, unlike a ``lazy`` factory's, because a path that fails inside an import cycle is a path that resolves normally once the cycle unwinds.
 
 The dotted spelling resolves from the longest importable prefix, the way :mod:`pydoc`'s ``locate`` reads a name, and stops at the first prefix that imports rather than continuing to shorter ones, so ``a.b.c`` reports what is wrong with ``a.b`` instead of quietly reporting something about ``a``.
-A prefix that is simply not a module is skipped.
+A prefix that is not a module at all is skipped.
 An :exc:`ImportError` from inside a module's own body is not, since that would be a real failure mistaken for a path one component too long.
 The colon form is canonical for exactly that reason, since it says where the module ends and needs no rule.
 
@@ -248,14 +258,15 @@ A bare dotted string as a key was rejected.
 The plan is built once at decoration, where :func:`inspect.signature` plus ``get_type_hints(include_extras=True)`` find the marked parameters and their context keys.
 
 Calls never touch :mod:`inspect` again.
-The plan compiles into a wrapper that mirrors the function's own signature, the way :mod:`dataclasses` builds ``__init__``, so the interpreter binds arguments natively, each injectable parameter defaults to the public ``injected`` sentinel, and the body is one identity check per parameter — an inlined registry read on the hit path, with a miss handed to the same fallback path ``use()`` takes, which owns ``set_default`` and the error.
+The plan compiles into a wrapper that mirrors the function's own signature, the way :mod:`dataclasses` builds ``__init__``, so the interpreter binds arguments natively, each injectable parameter defaults to the public ``injected`` sentinel, and the body is one identity check per parameter, an inlined registry read on the hit path, with a miss handed to the same fallback path ``use()`` takes, which owns ``set_default`` and the error.
 There is no repacking through ``*args`` and no signature walk at call time, whatever shape the call takes, and compilation is paid once, at decoration, in microseconds per function.
 The generated source is registered in :mod:`linecache` under a counter-unique filename, so a traceback through a wrapper shows its actual lines and ``pdb`` can step through them.
 The entry is removed again when the wrapper itself is garbage collected.
 The resolution helpers are bound into the wrapper at decoration, so patching nodrill internals afterwards does not change compiled wrappers, and the supported seams are ``provider()``, ``set_default()`` and ``isolate()``.
 
 Two consequences are worth knowing.
-A bad call fails before any resolution runs, unknown keywords and over-long positional lists natively, and an under-supplied call with a missing-argument :exc:`TypeError` worded exactly as the interpreter words it — though the arity range such messages report counts injectable parameters as optional, which from the caller's side they are.
+A bad call fails before any resolution runs, unknown keywords and over-long positional lists natively, and an under-supplied call with a missing-argument :exc:`TypeError` worded exactly as the interpreter words it.
+The arity range such a message reports counts injectable parameters as optional, which from the caller's side they are.
 And a call that passes an injected parameter positionally costs the same as any other, since there is no fallback path for it to land on.
 
 If hint resolution hits a :exc:`NameError` at decoration, from string annotations naming things defined later, plan build and compilation move behind a dispatching wrapper to the first call and are cached, and a racing double build is harmless because plans are deterministic.
@@ -453,7 +464,70 @@ That base is also how ``_lazy`` sees through a view to its target when it checks
 ``_debug`` is instrumentation rather than registry, and sits beside ``_core`` because nothing on a successful lookup reads it.
 ``_report`` is reporting rather than registry, sharing with ``_core`` only the value a provider is holding, and nothing in it runs until an exception is already leaving a block.
 ``_inject``, ``_concurrency`` and ``_errors`` are the remaining features.
+``_audit`` is the contract tool, which reads the table the ledger fills and is imported by nothing in the core, so a process that never audits never loads it.
+``__main__`` is two lines of dispatch under it, which is the whole command line surface.
 Nothing under ``nodrill._*`` is public.
+
+
+The contract recorder
+---------------------
+
+Recording what each entry point reads is the second reader of a trick the ledger already uses.
+Read counting installs a ``dict`` subclass as the registry rather than branching in ``use()``, and the recorder rides the same subclass, so a lookup pays nothing for either feature when neither is on.
+
+That choice was forced rather than preferred.
+A compiled :func:`~nodrill.inject` wrapper binds its registry accessor at decoration, so patching a module afterwards does not reach it, and swapping ``use`` or installing a pytest plugin would record every plain lookup and none of the injected ones.
+Emitting a recording branch from the codegen instead would make an enabled and a disabled wrapper two different compiled artefacts, which is the one thing the wrapper's design does not allow.
+The wrapper's registry read is a subscript inside a ``try`` for the same reason it is fast, and that spelling is now load-bearing twice over, since a read through ``get`` is deliberately not recorded.
+The miss it falls through to runs after the handler and not inside it, so nothing a :func:`~nodrill.set_default` factory raises arrives chained to a ``KeyError`` the caller never wrote, and a hit still skips the handler entirely.
+A subscript in a ``try`` wins on the hit and loses on the miss, by about as much again, which is the right trade only because a parameter answered by a provider is the common case and one answered by a fallback takes the miss path on every call.
+
+An entry point is the key of a provider block with no block open above it, or of one that ``NODRILL_CONTRACT_ENTRY`` names.
+The first rule alone was the original design and it does not survive contact with an ordinary application.
+Anything opened above the boundaries becomes the entry point for everything beneath it, so a service that opens configuration or a database handle in its main function gets one entry point and a file that distinguishes nothing.
+Naming the boundaries is therefore not a refinement, it is what makes the first column mean anything, and it is a variable rather than a ``provider()`` keyword because a sixth reserved name on a released function cannot be taken back and a variable can.
+
+Outermost is read off the chain of open blocks, not off the kind of mapping a block inherited.
+The difference matters because a block closing out of order leaves a repaired mapping that outlives its own chain, and asking "was the mapping I inherited an instrumented one" would hand that dead mapping's label to the next boundary that opened.
+The chain is already computed one line further down in the same method, so the correct rule is also the cheaper one.
+
+The label travels on the registry, which is what makes it survive a task, a wrapped thread and a repair.
+A repair derives it again from the chain that survived rather than copying the one the replaced mapping held, since the block that minted that label may be the one that just left.
+The key a repair restores is credited to the block it was restored from, for the same reason and by the same rule, so the next read of it counts for a block that is still open.
+
+What the recorder keeps is capped.
+An entry point is a provider key, and a key built per request mints one entry point per request, so the set would otherwise grow for as long as the process lives and the file would hold one line per request.
+The cap says on standard error that the run stopped being one a contract can rest on, and names the variable that turns a per-request key back into one boundary.
+
+A consumer read is a subscript.
+:func:`~nodrill.use` and the compiled wrapper both read the registry with ``[]``, and everything the library does to a registry for its own reasons, the open chain, an ``extend=True`` merge and the out-of-order repair, reads it unhooked through ``dict`` itself or through ``get``, so the recorder can tell a read that a user wrote from a read that the library did without being told which is which.
+The instrumented registry also sees what a caller passed rather than what the registry stores, so a :func:`~nodrill.ref` arrives unresolved and is resolved before it is recorded, and anything else is rendered by its ``repr`` rather than raising out of instrumentation that is supposed to be passive.
+The repair reads through ``dict.__getitem__`` rather than through ``get``, which keeps it invisible to both the recorder and the read counter and still raises if the key it is restoring is ever missing.
+
+The recorder sits above the defaults probe in the miss path rather than on the raise.
+A :func:`~nodrill.set_default` factory and a ``use(key, default=...)`` both return before anything reports a miss, so a lookup that a registration is quietly answering is invisible to anything watching for the error, and that lookup is the one the whole feature exists to surface.
+It is also why a miss the registrations do not answer is left out of the file entirely, since an exception reaching a traceback needs no artefact to be noticed.
+
+The file is three tab-separated fields, sorted, and carries no file names and no line numbers.
+A site moves whenever anything above it moves, so a contract carrying sites churns on every pull request and stops being read, and sites belong in a failure message where the audience is different.
+A tab rather than aligned columns, because padding means one long key rewrites every line, and rather than two spaces, because ``repr`` escapes a tab and a newline but not a space, so a key holding two spaces in a row would otherwise split into more fields than the format has.
+The verb carries the whole answer, ``requires`` or ``set_default`` or ``default``, rather than a fourth column, so every line is the same shape and a reviewer greps for what is not ``requires``.
+A fourth verb, ``opened``, is written when a declared boundary opened and read nothing, and it is dropped again from the rendered contract as soon as that boundary has a read of its own.
+Without it a boundary that never ran could only be inferred from the absence of its reads, which tells a handler that reads nothing that its key was renamed, on every run.
+
+The switch is an environment variable read once at import, because a child interpreter inherits one.
+That is what makes a suite that spawns subprocesses, runs under ``xdist`` or uses a process pool record without a special case for any of them.
+A pool worker needs two more things.
+:mod:`multiprocessing` exits a worker through :func:`os._exit`, which runs finalizers and never :mod:`atexit`, so the dump is registered both ways and made idempotent rather than registered once and lost.
+A fork then clears the finalizer registry before the worker body runs, so the child registers the finalizer again from an after-fork hook, which is the one callback :mod:`multiprocessing` runs after that clear.
+The directory is resolved to an absolute path when the variable is read, and the resolved path is written back over the variable beside the run id, since the hooks run at exit and a relative directory otherwise names one place to the process that was armed and another to a child that starts somewhere else.
+A child recording beside itself puts a whole boundary of the contract where nothing renders it, and the merge cannot report a file it never sees.
+Each process of a run shares a run id minted at arming and written back into the environment, so a directory reused by a later run yields the newer contract rather than the union of both.
+That inheritance works through the environment, so it reaches a child and not a sibling started by a runner that never imported the library, which is why the variable can also be set from outside.
+
+Everything the reader can be handed is a file somebody else wrote.
+A shard truncated by a killed worker, one from a version this reader does not know, one carrying a verb nothing writes, are each a message and the exit code the reference page promises, never a traceback out of a command line.
+The recorder's own write is held to the same rule from the other side, since it runs in an exit hook where a raise is a traceback the process still exits zero after.
 
 isolate()
 ---------

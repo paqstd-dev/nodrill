@@ -100,16 +100,17 @@ def _boundary_note(exc: BaseException, where: str) -> None:
 def annotate_exceptions(*, enabled: bool = True) -> None:
     """Attach the scope to every exception leaving a provider block, process wide.
 
-    An exception passing out of a provider block gains a note naming what
-    that block provided, and comes out as the same object with __notes__ the
-    only thing about it that changed.  Nested blocks each add their own as it
-    climbs, innermost first.  One block decides for itself with
-    provider(..., annotate=True) or annotate=False, and enabled=False turns
-    the switch off again.  Rendering a note calls the value's repr while the
-    block is unwinding, so whatever a provider holds can be printed into a
-    traceback, and a value carrying a secret should hide it in its own repr.
-    On Python 3.10 this warns and does nothing, since exception notes are
-    3.11 and up.
+    An exception passing out of a provider block gains a note naming what that
+    block provided, and comes out as the same object with __notes__ the only
+    thing about it that changed, innermost block first where several nest.
+
+    One block decides for itself with provider(..., annotate=True) or
+    annotate=False, and enabled=False turns the switch off again.
+
+    Rendering a note calls the value's repr while the block is unwinding, so
+    whatever a provider holds can be printed into a traceback, and a value
+    carrying a secret should hide it in its own repr.  On Python 3.10 this
+    warns and does nothing, since exception notes are 3.11 and up.
     """
     if enabled and _add_note is _drop_note:
         warnings.warn(_UNSUPPORTED, RuntimeWarning, stacklevel=2)

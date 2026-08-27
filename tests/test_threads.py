@@ -38,7 +38,7 @@ def pool() -> Iterator[Executor]:
 
 class TestPlainThreads:
     def test_plain_thread_does_not_see_context(self, in_thread: ThreadRunner) -> None:
-        """The documented behavior: threading.Thread starts with an empty context."""
+        """The documented behavior, that threading.Thread starts with an empty context."""
         with provider(Config(tag="main")):
             assert isinstance(in_thread(read_tag), NoProviderError)
 

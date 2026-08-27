@@ -1,7 +1,7 @@
-"""Argument binding in @inject: the compiled wrapper mirrors the signature.
+"""Argument binding in @inject, where the compiled wrapper mirrors the signature.
 
 The wrapper's parameter list is generated from the function's own, so the
-interpreter binds every call shape natively; these tests pin the shapes down.
+interpreter binds every call shape natively, and these tests pin the shapes down.
 """
 
 from collections.abc import Callable
@@ -179,8 +179,7 @@ class TestErrorsOnBadCalls:
             handler("a", "b", "c")  # type: ignore[call-arg, arg-type]
 
     def test_a_bad_call_fails_before_resolution(self) -> None:
-        # The wrapper mirrors the signature, so Python rejects the call exactly
-        # as it would reject the undecorated function, provider or no provider.
+        # The wrapper mirrors the signature, so Python rejects the call as it always would.
         @inject
         def handler(db: FromCtx[Db] = injected) -> str:
             return db.dsn
@@ -233,8 +232,7 @@ class TestSignatureShapes:
             handler()  # type: ignore[call-arg]
 
     def test_missing_required_argument_beats_the_provider_miss(self) -> None:
-        # The guard runs before any resolution, so the caller's mistake is
-        # reported even when no provider is active.
+        # The guard runs before any resolution, so no provider need be active to report it.
         @inject
         def handler(db: FromCtx[Db], tag: str) -> str:
             return tag

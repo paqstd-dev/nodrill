@@ -78,7 +78,7 @@ A ``repr`` that raises an :exc:`Exception` is replaced by ``<unprintable Request
 
 The exception is the same object throughout.
 Its ``args``, its ``__cause__``, its ``__context__`` and its traceback are exactly what they were, and ``__notes__`` is the only thing that changed.
-An exception that refuses the note, a frozen dataclass exception among them, keeps its own failure and simply goes unannotated, since the failure on its way out is worth more than the note describing it.
+An exception that refuses the note, a frozen dataclass exception among them, keeps its own failure and goes unannotated, since the failure on its way out is worth more than the note describing it.
 The one thing that does get through is a :exc:`BaseException` raised inside a ``__repr__``, which is not caught anywhere, exactly as one raised inside a :func:`~nodrill.lazy` factory is not.
 
 Rendering runs the value's ``__repr__`` while the block is unwinding, which is the one place this library calls your code on an exception path.

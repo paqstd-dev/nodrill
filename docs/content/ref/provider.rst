@@ -78,7 +78,7 @@ Keys stay exact.
 The instance answers ``use(Repository)`` and nothing else, so ``use(PostgresRepository)`` misses, because one provider registers one key.
 
 A string works as well, ``provider(instance, key="repo")``, for a role that has no type to name it.
-Note that ``use()`` on a string key is typed as returning :class:`Namespace`, so this form gives up the typed return.
+``use()`` on a string key is typed as returning :class:`Namespace`, so this form gives up the typed return.
 
 Whether the instance actually satisfies ``key`` is not checked, since a runtime :func:`isinstance` against a plain :class:`~typing.Protocol` is not possible, and a type checker already checks the call site.
 

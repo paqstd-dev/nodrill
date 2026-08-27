@@ -36,8 +36,7 @@ from ._views import _FORWARDED, _INPLACE, _INVOKED, _ITEM_WRITES, _REFLECTED, _V
 
 _UNCOPYABLE = "sealed context views cannot be pickled or copied"
 
-# Generated rather than written out, since these three are off the hot path and report
-# themselves, unlike the attribute members below which report the name they were given.
+# Generated, since these three report themselves where the attribute members below report a name.
 _COMPARED: dict[str, Callable[..., Any]] = {
     "__eq__": operator.eq,
     "__ne__": operator.ne,
@@ -110,8 +109,7 @@ class _SealedProxy(_View):
         answer: type[Any] = self._nodrill_target.__class__
         return answer
 
-    # Written out rather than generated, since a generator taking the name through *args
-    # costs half as much again on the operation a sealed value is read through most.
+    # Written out, since taking the name through *args costs half as much again on a read.
     def __getattr__(self, name: str) -> Any:
         scope = self._nodrill_scope
         if scope.exited is not None:
@@ -137,8 +135,7 @@ class _SealedProxy(_View):
     def __reduce_ex__(self, protocol: SupportsIndex) -> Any:
         raise TypeError(_UNCOPYABLE)
 
-    # On the class, since copy looks these up on the instance and __getattr__ would
-    # hand back the target's own hook.
+    # On the class, since on the instance __getattr__ would hand copy the target's own hook.
     def __copy__(self) -> Any:
         raise TypeError(_UNCOPYABLE)
 

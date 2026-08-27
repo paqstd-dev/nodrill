@@ -19,36 +19,53 @@ The first rows are one function doing one read, reached six ways, so they can be
 operation                                                         ns    ×
 ================================================================  ====  ===
 one read in a function, value passed in as a parameter            23    1.0
-the same read through `use()`                                     61    2.7
-the same read through `@inject`                                   71    3.1
+the same read through `use()`                                     59    2.6
+the same read through `@inject`                                   65    2.8
 the same read through a `frozen=True` provider                    117   5.1
-the same read through a `sealed=True` provider                    124   5.5
-the same read through a resolved `lazy` provider                  138   6.0
-`use(Config)` on its own, without the call frame                  44    2.0
-the same lookup through a `ref()` key                             149   6.6
+the same read through a `sealed=True` provider                    124   5.4
+the same read through a resolved `lazy` provider                  136   5.9
+`use(Config)` on its own, without the call frame                  42    1.8
+`use('scope').field`, one attribute off a namespace               62    2.7
+the same lookup through a `ref()` key                             143   6.2
+`use('absent', default=...)`, a miss that falls back              227   9.9
+`use(Config)` under `debug(unused=True)`                          158   6.9
 bare `ContextVar.get()`, for reference                            16    0.7
-`with provider(...)`, enter and exit                              1033  45
-the same with 8 providers already open                            1070  47
-`with provider(..., sealed=True)`, entered and exited             2599  114
-`with provider(lazy(...))`, entered and exited unread             2003  88
-`with provider(..., extend=True)`, over an 8-attribute namespace  2144  94
-`wrap(fn)()`, per call into a thread                              546   24
+`with provider(...)`, enter and exit                              843   37
+the same with 8 providers already open                            881   38
+the same with 64 providers already open                           1277  56
+`with provider(..., sealed=True)`, entered and exited             2363  103
+`with provider(lazy(...))`, entered and exited unread             1799  78
+`with provider(..., extend=True)`, over an 8-attribute namespace  1954  85
+`wrap(fn)()`, the context replay per call                         550   24
+`Executor.submit(fn).result()`, a round trip through a worker     9120  397
 ================================================================  ====  ===
 
-CPython 3.14.5 on macOS 26.6, arm64, measured 2026-08-20.
+CPython 3.14.5 on macOS 26.6, arm64, measured 2026-08-26.
 
 .. end benchmarks
 
 The ``×`` column is against handing the value in as a parameter, which is the alternative nodrill removes from the signatures in between.
+It is the column to read, because it is the one that travels.
+
+Every row but the last is one thread doing one thing, so what the nanoseconds depend on is how fast one core is, and not how many there are.
+A machine with more cores runs the same row at the same speed, and a server core is often slower at this than a laptop one, so a bigger machine is not a faster table.
+What a quiet machine buys is a table that says the same thing twice, which is why the numbers are timed over several passes and a row is only republished when it moved further than a rerun moves it.
+Your own figures will differ and the ratios between them should not, which is the part any claim below rests on.
 
 Reading through :func:`~nodrill.use` costs a little over the parameter it replaces.
 :func:`~nodrill.inject` costs more, because it fills the argument before the body runs.
 ``frozen=True``, :func:`~nodrill.lazy` and ``sealed=True`` add a proxy hop to every attribute the consumer touches, and the sealed hop is the frozen one plus a liveness check, which is the few nanoseconds between those two rows.
 A :func:`~nodrill.ref` key pays for a Python-level hash and one equality check where a class hashes in C, on the lookups that go through a ref and on no others.
+A string-named namespace costs that same lookup and one attribute read on top, which is the shape ``extend=True`` and :func:`~nodrill.adopt` both produce.
+A miss that falls back to a call-site ``default=`` is the dearest read here, since it is the only one that leaves the dict and walks the fallback order.
+A key read that way on every request is worth providing instead.
+``debug(unused=True)`` routes every read through an instrumented registry, which the row above prices at roughly three and a half times a plain hit.
+``NODRILL_CONTRACT`` installs the same registry and pays the same, which is why recording a contract belongs in a suite and not in a running service.
 A request that reads a provided value a hundred times spends microseconds in nodrill, against hundreds of microseconds for one round trip to a database.
 
 Entering a provider is the expensive end, because it copies the registry so that sibling tasks stay isolated.
-That copy is proportional to how many providers are open, which the ``with provider(...)`` rows price at one and at eight, and it happens once per scope rather than once per lookup.
+That copy is proportional to how many providers are open, which the three ``with provider(...)`` rows price at one, at eight and at sixty-four, and it happens once per scope rather than once per lookup.
+Most of what a block costs is fixed, so eight providers are barely dearer than one and the sixty-four row is where the copy itself shows.
 A lazy provider pays for the cell it allocates on top, which is the trade the feature is for, a microsecond on entry against a value that is never built at all on the requests that never read it.
 An extending layer copies the enclosing namespace on top of the registry, so its row grows with how many attributes have accumulated rather than with how many layers are open, and that second copy is what keeps a sibling task from seeing a layer opened after it started.
 
@@ -57,12 +74,17 @@ That is a per-scope cost paid by the blocks that ask for it, and it buys the sit
 The second read is what tells an :class:`~contextlib.ExitStack` or an explicit close from a plain ``with``, whose exit is on the line it opened.
 A provider that does not ask pays one branch on entry and nothing on exit, which is a few percent of opening a scope and nothing at all on a lookup.
 
+Carrying context to a worker is two prices.
+:func:`~nodrill.wrap` replays a snapshot into a fresh context on every call, which is all its row measures, since no thread is involved.
+Handing the same callable to :class:`~nodrill.Executor` costs the round trip through a worker as well, which the last row prices at more than an order of magnitude on top.
+That difference is the thread rather than the context, which is why a worker is worth a batch of work rather than one lookup.
+
 What has no row
 ---------------
 
-Debug mode has none, because it is not for the hot path.
-:func:`~nodrill.debug` makes entering a provider read the stack and write to a ledger, and leaves a lookup that hits costing what it always cost.
-``debug(unused=True)`` also routes every read through a counting registry, which puts a hit at roughly three times its usual price.
+Plain :func:`~nodrill.debug` has none on the read side, because a lookup that hits costs what it always cost.
+What it costs is a stack read and a ledger write per provider entered, which is the entry path and not the hot one.
+Counting reads is the part that reaches a lookup, and that has a row above.
 
 Exception notes have none either, because nothing in that path runs until an exception is already leaving a block.
 A block that exits cleanly costs one pointer comparison more than it did before :func:`~nodrill.annotate_exceptions` existed.
@@ -72,7 +94,9 @@ How to read this
 
 The absolute numbers move with the machine, and the ratios are the part worth reading.
 A rerun on one machine lands within ten or fifteen percent, so read the digits as approximate and treat a single-row change of that size as noise rather than as a regression.
-The way to tell them apart is to measure both revisions in one sitting, alternating between them, which is what a change to the lookup path is expected to do before it claims anything.
+The way to tell them apart is to measure both revisions in one sitting, which is what a change to the lookup path is expected to do before it claims anything.
+``--save`` records one and ``--against`` compares the other to it, printing the deltas and marking the rows a rerun would not explain.
+Raise ``--passes`` when a row will not settle, since a verdict off a single pass is mostly weather.
 
 Regenerate the table with ``make bench ARGS=--write``, which measures on your machine and rewrites the block above.
 Nothing here runs in CI, because timing on a shared runner measures the runner.

@@ -191,7 +191,7 @@ class TestOpenElsewhere:
         assert f"{__file__}:{opened}" in str(error)
 
     def test_a_bare_pool_worker_is_diagnosed(self) -> None:
-        """The case the feature exists for: submitting to a pool that is not nodrill's."""
+        """The case the feature exists for, submitting to a pool that is not nodrill's."""
         with debug(), provider(Session()), ThreadPoolExecutor(max_workers=1) as pool:
             error = pool.submit(read_session).result()
         assert "which did not inherit that context" in str(error)
@@ -505,7 +505,7 @@ class TestUnusedProviders:
         assert record.lineno == opened
 
     def test_a_read_provider_is_silent(self) -> None:
-        """A provider something read is not warned about; warnings are errors here."""
+        """A provider something read is not warned about, and warnings are errors here."""
         with debug(unused=True), provider(Session()):
             use(Session)
 
@@ -526,6 +526,16 @@ class TestUnusedProviders:
             layered = layer_over_a_namespace()
         [record] = records
         assert record.lineno == layered
+
+    def test_a_layer_over_nothing_credits_no_one(self) -> None:
+        """extend=True over a name nothing provided has no outer namespace to read."""
+        with pytest.warns(UnusedProviderWarning, match="never read") as records, debug(unused=True):
+            with provider("db", dsn="x"):
+                use("db")
+                with provider("app", extend=True, tag="x"):
+                    opened = line_above()
+        [record] = records
+        assert record.lineno == opened
 
     def test_a_block_that_raised_is_not_warned_about(self) -> None:
         """A body that blew up never had the chance to read, so it is not blamed for it."""

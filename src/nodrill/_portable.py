@@ -3,8 +3,7 @@
 export() renders the providers you name as a plain dict that JSON can hold,
 and adopt() opens them again wherever that dict arrives.  A codec registered
 with set_codec() maps what JSON cannot hold into what it can, and its result
-is checked like any other, so the envelope stays JSON whatever the codec does
-inside.
+is checked like any other, so the envelope stays JSON whatever a codec does.
 """
 
 from __future__ import annotations
@@ -60,11 +59,10 @@ def export(*names: str) -> dict[str, Any]:
 
     Nothing travels unless it is named here, and every value has to be
     JSON-safe, meaning a str, int, float, bool, None, or a list or dict of
-    those.  Anything else raises rather than being coerced, so a value
-    arrives on the other side as itself or not at all.  Containers are
-    rebuilt rather than referenced, so a write to a provider never reaches
-    an envelope already handed on.  The result carries a version that
-    adopt() checks.
+    those.  Anything else raises rather than being coerced, so a value arrives
+    on the other side as itself or not at all.  Containers are rebuilt rather
+    than referenced, so a write to a provider never reaches an envelope already
+    handed on.  The result carries a version that adopt() checks.
     """
     # Read once, so a set_codec() part way through cannot build one envelope out of two codecs.
     dump = _codec.dump
@@ -87,9 +85,9 @@ def adopt(
     expects, which is what to reach for when the producer is not yours.
     annotate decides for these blocks what it decides for a provider() block,
     and annotate=False keeps a payload somebody else wrote out of a traceback
-    this process renders.  What no check can say is
-    whether the values are true, and an adopted value is input with the same
-    trust as any other request field.
+    this process renders.  What no check can say is whether the values are
+    true, and an adopted value is input with the same trust as any other
+    request field.
     """
     return _adopting(_adopted(payload, only), annotate=annotate)
 
@@ -116,11 +114,11 @@ def set_codec(*, dump: _Hook | None = None, load: _Hook | None = None) -> None:
     and never writes into it, since the containers below the top level are
     the exporting block's own.  A load runs after the payload has been
     checked, never before, so a malformed one is refused without reaching
-    the codec at all.  Each call states the whole codec, and
-    set_codec() with no arguments clears both, while a service that only
-    produces or only consumes registers the one half it needs.  Both ends of
-    a boundary have to agree on the format, which is why this is startup
-    configuration rather than something a scope decides.
+    the codec at all.  Each call states the whole codec, and set_codec() with
+    no arguments clears both, while a service that only produces or only
+    consumes registers the one half it needs.  Both ends of a boundary have to
+    agree on the format, which is why this is startup configuration rather
+    than something a scope decides.
     """
     for role, hook in (("dump", dump), ("load", load)):
         if hook is not None and not callable(hook):

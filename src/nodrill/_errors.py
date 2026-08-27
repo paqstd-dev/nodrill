@@ -1,4 +1,4 @@
-"""Exceptions raised by nodrill."""
+"""Exceptions raised by nodrill, and the key vocabulary every message renders with."""
 
 from __future__ import annotations
 
@@ -13,9 +13,34 @@ _Key = str | type[Any]
 # The same union for isinstance, as a tuple since `str | type` allocates a UnionType per evaluation.
 _KEY_TYPES = (str, type)
 
+# What _key_path renders for no key at all, which only a read outside every block can be.
+_NO_ENTRY = "(none)"
+
 
 def _describe_key(key: Any) -> str:
     return repr(key) if isinstance(key, str) else getattr(key, "__qualname__", repr(key))
+
+
+def _key_path(key: _Key) -> str:
+    """Render a key the way ref() spells one, so two same-named classes stay apart.
+
+    _describe_key renders a bare qualname, which reads well in a message and
+    is ambiguous in a file that is diffed, since two Config classes in two
+    modules render identically.  Anything else falls back to its repr, since
+    instrumentation sees what a caller passed rather than what use() accepts.
+    """
+    if isinstance(key, str):
+        return repr(key)
+    module = getattr(key, "__module__", None)
+    qualname = getattr(key, "__qualname__", None)
+    if module is None or qualname is None:
+        return repr(key)
+    return f"{module}:{qualname}"
+
+
+def _counted(count: int, singular: str, plural: str | None = None) -> str:
+    """Render a count and its noun, since a figure in a sentence needs to agree with it."""
+    return f"{count} {singular if count == 1 else plural or singular + 's'}"
 
 
 def _rebuilt(
@@ -36,9 +61,8 @@ def _reduced(error: BaseException) -> tuple[Any, tuple[Any, ...]]:
 class NoProviderError(LookupError):
     """Raised by use() when no provider is active for the requested key.
 
-    Carries the requested key, the active keys, the boundaries a declaration
-    named for it and, under debug mode, the diagnosis of where the value is,
-    as attributes.
+    Carries as attributes the requested key, the active keys, the boundaries a
+    declaration named for it and, under debug mode, where the value actually is.
     """
 
     # A class-level default, so one pickled by a release without the field still answers.

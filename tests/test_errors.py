@@ -71,7 +71,7 @@ class TestNoProvider:
         assert "Did you mean" not in str(exc_info.value)
 
     def test_hand_built_error_with_an_odd_key_still_builds_a_message(self) -> None:
-        """NoProviderError is public API: use() screens keys, a direct caller need not."""
+        """NoProviderError is public API, and a direct caller need not screen keys as use() does."""
         assert "42" in str(NoProviderError(42))
 
     def test_use_rejects_non_key_types(self) -> None:

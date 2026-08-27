@@ -13,6 +13,8 @@ The criticism the anti-pattern label points at is real, though, because a depend
 That is why ``@inject`` exists, and why explicit arguments always win.
 Where visibility matters, put the dependency in the signature and let the decorator fill it.
 
+For what a whole boundary reads rather than what one function does, :doc:`/content/howto/record-what-a-handler-reads` records it from a test run into a file a pull request reviews, which answers the same objection at the scale a reviewer asks it.
+
 Does it work with FastAPI, Django, Flask, Celery?
 -------------------------------------------------
 

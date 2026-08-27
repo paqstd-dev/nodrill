@@ -165,8 +165,7 @@ class TestGuardsAndCopies:
     def test_a_defaulting_getattr_does_not_swallow_the_expiry(self) -> None:
         with provider(Session(), sealed=True) as session:
             pass
-        # Not an AttributeError, since getattr(x, name, default) would answer the default
-        # and hand the caller the silent wrong value sealing exists to report.
+        # Not an AttributeError, or getattr(x, name, default) would answer with the default.
         assert not issubclass(ExpiredScopeError, AttributeError)
         with pytest.raises(ExpiredScopeError):
             getattr(session, "dsn", "fallback")

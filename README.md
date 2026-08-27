@@ -62,6 +62,9 @@ When it goes wrong, `debug()` turns a miss into a diagnosis naming the thread, t
 `isolate()` gives a test fresh context state and rolls it back afterwards.
 Everything above is importable from the top-level package, and there is nothing else to import.
 
+Before it goes wrong, running a suite under `NODRILL_CONTRACT` records which keys each entry point actually read and which of those a fallback answered rather than a provider, and `python -m nodrill contract` renders that into a file a pull request reviews.
+It is a command rather than an import, so it adds no name to the package and no script to your PATH.
+
 ## Overhead
 
 A lookup is one dict read on a single `ContextVar`, and nothing is constructed, resolved or cached along the way.
@@ -91,7 +94,8 @@ Start with the [tutorial](https://nodrill.readthedocs.io/en/latest/content/intro
 
 ## Contributing
 
-Bug reports and small focused pull requests are welcome. See [CONTRIBUTING.md](https://github.com/paqstd-dev/nodrill/blob/main/.github/CONTRIBUTING.md).
+Bug reports and small focused pull requests are welcome.
+See [CONTRIBUTING.md](https://github.com/paqstd-dev/nodrill/blob/main/.github/CONTRIBUTING.md).
 `make install` sets up the environment, and `make` runs the same gate CI does.
 
 Security issues go through a [private advisory](https://github.com/paqstd-dev/nodrill/security/advisories/new) rather than the issue tracker.

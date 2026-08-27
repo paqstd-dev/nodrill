@@ -29,7 +29,7 @@ from typing import (
 )
 
 from ._core import _registry, _resolve_miss
-from ._errors import _describe_key
+from ._errors import _counted, _describe_key
 from ._refs import _is_ref, _KeyArg
 
 _T = TypeVar("_T")
@@ -292,8 +292,8 @@ def _missing_error(label: str, values: tuple[tuple[str, Any], ...]) -> TypeError
         # Two names join with a bare "and". Three or more take the serial comma.
         separator = " and " if count == 2 else ", and "  # noqa: PLR2004
         listed = ", ".join(repr(n) for n in names[:-1]) + separator + repr(names[-1])
-    plural = "s" if count > 1 else ""
-    return TypeError(f"{label}() missing {count} required positional argument{plural}: {listed}")
+    counted = _counted(count, "required positional argument")
+    return TypeError(f"{label}() missing {counted}: {listed}")
 
 
 def _reserved(name: str) -> bool:
@@ -417,7 +417,12 @@ def _missing_guard_lines(label: str, missing: list[str], ns: _WrapperSpace) -> l
 def _resolve_lines(target: str, key: str, ns: _WrapperSpace, indent: str) -> list[str]:
     """Render the one lookup template, an inlined registry hit with the miss path in _core."""
     return [
-        f"{indent}{target} = {ns.registry}().get({key}, {ns.omitted})",
+        # A subscript in a try beats get() plus an identity test, since a hit skips the handler.
+        f"{indent}try:",
+        f"{indent}    {target} = {ns.registry}()[{key}]",
+        f"{indent}except KeyError:",
+        f"{indent}    {target} = {ns.omitted}",
+        # The miss runs after the handler, so nothing it raises is chained onto the lookup's own.
         f"{indent}if {target} is {ns.omitted}:",
         f"{indent}    {target} = {ns.miss}({key})",
     ]
@@ -558,9 +563,8 @@ def _compile_wrapper(
 ) -> Callable[..., Any]:
     """Materialize the rendered wrapper and tie the lifetimes together.
 
-    The registered source lives exactly as long as the wrapper, and the
-    wrapper is popped out of its own globals so nothing needs the cycle
-    collector to die.
+    The registered source lives as long as the wrapper, and the wrapper is
+    popped out of its own globals so nothing needs the cycle collector to die.
     """
     name, source, ns = _render_wrapper(func, sig, plan)
     filename = f"<@inject {plan.label}-{next(_SOURCE_IDS)}>"
@@ -697,10 +701,9 @@ def inject(func: Any = None, /, *, from_: _KeyArg | None = None) -> Any:
     attribute of use("app"), defaults included, and skips self and cls.
     Explicitly passed arguments always win, an explicit None included.
 
-    Works on plain and async functions, methods, classmethods and
-    staticmethods in either decorator order.  Generator functions are
-    rejected, because their bodies run after the call, possibly under
-    different providers.
+    Works on plain and async functions, methods, classmethods and staticmethods
+    in either decorator order.  Generator functions are rejected, because their
+    bodies run after the call, possibly under different providers.
     """
     if from_ is not None and not isinstance(from_, str | type) and not _is_ref(from_):
         raise TypeError(

@@ -9,8 +9,7 @@ project = "nodrill"
 author = "Pavel Kutsenko"
 copyright = "2026, Pavel Kutsenko"
 
-# nodrill is installed alongside the docs group, so the built docs always
-# report the version they were built from.
+# Installed alongside the docs group, so a build reports the version it was built from.
 release = package_version("nodrill")
 version = ".".join(release.split(".")[:2])
 
@@ -23,8 +22,7 @@ extensions = [
 templates_path = ["_templates"]
 exclude_patterns = ["_build", ".DS_Store", "Thumbs.db"]
 
-# Single backticks mean inline code, the way they read in every other file
-# in the repo; broken explicit roles still fail the build under nitpicky.
+# Single backticks are inline code here, as they read everywhere else in the repo.
 default_role = "literal"
 nitpicky = True
 
@@ -48,15 +46,13 @@ html_js_files = ["js/landing.js"]
 html_favicon = "_static/img/favicon.svg"
 html_copy_source = False
 
-# Read the Docs exports the canonical URL of the version being built, and a URL
-# hardcoded here would point every version at latest.
+# From Read the Docs, since a URL hardcoded here would point every version at latest.
 html_baseurl = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
 
 html_theme_options = {
     "accent_color": "teal",
     "color_mode": "auto",
-    # The card GitHub shows for the repository, as an absolute URL a crawler can
-    # fetch. index.rst repeats it in :cover:, which asks for the large preview.
+    # Absolute, since a crawler fetches it, and index.rst repeats it for the large preview.
     "og_image_url": (
         "https://raw.githubusercontent.com/paqstd-dev/nodrill/main"
         "/.github/assets/social-preview.png"
@@ -78,6 +74,5 @@ html_theme_options = {
     ],
 }
 
-# intersphinx already resolves every CPython target on each build, so linkcheck
-# skips the host rather than re-requesting it and collecting HTTP 429s.
+# Resolved by intersphinx on every build already, so re-requesting it only collects 429s.
 linkcheck_ignore = [r"https://docs\.python\.org/.*"]

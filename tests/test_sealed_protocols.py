@@ -359,8 +359,7 @@ class TestExpiredProtocols:
     def test_every_generated_protocol_checks_the_scope(
         self, expired: Everything, name: str
     ) -> None:
-        # Called with no arguments, since the check runs before the delegation, so
-        # a missing one shows up as something other than ExpiredScopeError.
+        # Called with no arguments, since the check runs first and a missing one raises otherwise.
         args = (1,) if name in _REFLECTED or name in _INPLACE else ()
         method = getattr(type(expired), name)
         with pytest.raises(ExpiredScopeError, match=rf"Everything\.{name} was used after"):

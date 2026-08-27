@@ -1,16 +1,14 @@
 """The ref() key, its resolution, and the list of refs created so far.
 
 A ref names its target by import path and borrows that target's hash and
-equality once it resolves, so the registry entry stored under the class is the
-entry a lookup through the ref finds.  Nothing branches on a ref.  The dict
-does the work, which leaves use() untouched and the compiled @inject wrappers
-with it.
+equality once it resolves, so the registry entry stored under the class is
+the entry a lookup through the ref finds.  Nothing branches on a ref, and
+the dict doing the work is what leaves use() and @inject untouched.
 
 Resolution is deterministic and idempotent, so it runs unlocked.  The module
-lock guards only the lists of created refs that resolve_refs() walks.  Holding a
-lock across import_module() would order this module's lock against the import
-system's per-module locks, which is the deadlock every lazy importer eventually
-reports.
+lock guards only the lists of created refs that resolve_refs() walks.  A lock
+held across import_module() would order this module's lock against the import
+system's per-module locks, the deadlock every lazy importer eventually reports.
 """
 
 from __future__ import annotations

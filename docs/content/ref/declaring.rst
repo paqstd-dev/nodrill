@@ -63,7 +63,7 @@ keys
    .. code-block:: python
 
       for key, record in nodrill.keys().items():
-          print(key, "—", record.doc)
+          print(key, record.doc)
 
    The result is a snapshot, and a declaration made after the call does not appear in it.
    The call imports nothing, so a declaration made through a :func:`ref` appears once the ref has resolved, and the catalogue lists what the modules imported so far have declared.

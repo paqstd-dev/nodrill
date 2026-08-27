@@ -20,11 +20,10 @@ R = TypeVar("R")
 def wrap(fn: Callable[P, R]) -> Callable[P, R]:
     """Bind fn to a snapshot of the context active when wrap() was called.
 
-    Each invocation runs under a fresh copy of the snapshot, so the result
-    is safe to call concurrently and callee writes stay local.  The
-    snapshot is taken at wrap() time, so wrapping at import binds
-    import-time state.  Async functions are rejected, because asyncio
-    propagates context itself.
+    Each invocation runs under a fresh copy of the snapshot, so the result is
+    safe to call concurrently and callee writes stay local.  The snapshot is
+    taken at wrap() time, so wrapping at import binds import-time state.
+    Async functions are rejected, because asyncio propagates context itself.
     """
     if inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn):
         raise TypeError(
@@ -50,9 +49,8 @@ def wrap(fn: Callable[P, R]) -> Callable[P, R]:
 class Executor(ThreadPoolExecutor):
     """ThreadPoolExecutor whose tasks see the submit-time context.
 
-    Each task runs under its own context copy, so worker-side writes never
-    leak between tasks or back to the submitter.  map() inherits the
-    behavior via submit().
+    Each task runs under its own context copy, so worker-side writes never leak
+    between tasks or back to the submitter.  map() inherits it through submit().
     """
 
     def submit(self, fn: Callable[P, R], /, *args: P.args, **kwargs: P.kwargs) -> Future[R]:

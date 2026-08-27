@@ -117,7 +117,7 @@ Finding a provider nothing reads
 
 That is usually a key that moved or a layer whose readers went away, and nothing else makes it visible.
 Reads are counted per block, so a shadowed provider is reported even when something read the inner one under the same key.
-It is off by default even inside debug mode, since a warning changes what a program prints and a counting read costs roughly three times a plain one, and a block whose body raised is never blamed.
+It is off by default even inside debug mode, since a warning changes what a program prints and a counting read costs roughly three and a half times a plain one, and a block whose body raised is never blamed.
 The warning is an :exc:`~nodrill.UnusedProviderWarning`, so `warnings.filterwarnings` can silence it by category.
 
 A miss inside an adopt block

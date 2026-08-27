@@ -1,7 +1,6 @@
 """The ambient attribute namespace, backed by its own ContextVar.
 
-Kept separate from the provider registry so use() and context.attr cannot
-shadow each other.
+Separate from the provider registry, so use() and context.attr cannot collide.
 """
 
 from __future__ import annotations

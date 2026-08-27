@@ -58,7 +58,7 @@ class Counter:
 
 class TestResolution:
     def test_unread_provider_never_builds(self) -> None:
-        """The whole point: a scope nothing reads costs nothing to open."""
+        """The whole point, that a scope nothing reads costs nothing to open."""
         factory = Counter()
         with provider(lazy(Config, factory)):
             pass
@@ -202,7 +202,7 @@ class TestFailure:
                 touch()
 
     def test_factory_returning_its_own_key_raises(self) -> None:
-        """The same mistake by return: the cell would otherwise become its own value."""
+        """The same mistake by return, where the cell would otherwise become its own value."""
 
         def factory() -> Config:
             returned: Config = use(Config)
