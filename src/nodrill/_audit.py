@@ -158,7 +158,7 @@ def _summary(reads: _Reads, shards: int, stale: int) -> str:
         f"A contract is only as complete as the run that recorded it."
     )
     if stale:
-        said += f" Left out {_counted(stale, 'shard')} from an earlier run."
+        said += f" Left out {_counted(stale, 'shard')} from before this run."
     return said
 
 

@@ -622,7 +622,7 @@ class TestWhatTheToolAdmits:
     def test_shards_left_out_are_said_rather_than_dropped_quietly(
         self, stale: int, said: str
     ) -> None:
-        assert _summary(set(), 1, stale).endswith(f"Left out {said} from an earlier run.")
+        assert _summary(set(), 1, stale).endswith(f"Left out {said} from before this run.")
 
     @pytest.mark.parametrize(
         ("count", "rendered"), [(0, "0 processes"), (1, "1 process"), (2, "2 processes")]
