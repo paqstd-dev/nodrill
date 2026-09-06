@@ -48,6 +48,9 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    env:
+      # A step if cannot read secrets, so the token comes through the environment.
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -64,9 +67,11 @@ jobs:
       - run: uv run coverage run -m pytest
       # Uploads before the gate, because coverage report exits non-zero under 100 percent.
       - run: uv run coverage xml
+      # Dependabot and fork runs get no secrets, and codecov refuses a tokenless upload.
       - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        if: env.CODECOV_TOKEN != ''
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ env.CODECOV_TOKEN }}
           files: coverage.xml
           fail_ci_if_error: true
       - run: uv run coverage report
